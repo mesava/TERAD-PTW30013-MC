@@ -45,6 +45,10 @@ jobs:
 
       - name: Install EGSnrc prerequisites
         run: |
+          # The hosted runner includes an unrelated Google Chrome apt source.
+          # EGSnrc does not depend on it, and stale Chrome mirror metadata can
+          # make apt-get update fail with a Hash Sum mismatch.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
           sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
 
