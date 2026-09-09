@@ -1,0 +1,26 @@
+{
+  "model_id": "PTW30013-public-volume-constrained-A",
+  "status": "stage2 first-pass geometry model",
+  "units": "cm unless stated otherwise",
+  "cavity_radius_cm": 0.305,
+  "internal_cavity_length_cm": 2.180,
+  "central_electrode_radius_cm": 0.0575,
+  "central_electrode_length_cm": 2.120,
+  "graphite_thickness_cm": 0.009,
+  "graphite_density_g_cm3": 1.85,
+  "pmma_thickness_cm": 0.0335,
+  "pmma_density_g_cm3": 1.19,
+  "air_density_521icru_g_cm3": 0.0012048,
+  "published_internal_cavity_volume_cm3": 0.6371,
+  "published_central_electrode_volume_cm3": 0.02202,
+  "published_net_cavity_volume_cm3": 0.6151,
+  "public_ptw_sensitive_length_cm": 2.30,
+  "public_ptw_nominal_sensitive_volume_cm3": 0.6,
+  "reference_point_from_tip_cm": 1.30,
+  "notes": [
+    "PTW public specifications give sensitive radius 3.05 mm, length 23.0 mm, 0.335 mm PMMA plus 0.09 mm graphite wall, and a 1.15 mm diameter Al central electrode.",
+    "The public 23 mm length and 3.05 mm radius do not geometrically reproduce the nominal 0.6 cm3 volume when represented as a simple straight cylinder.",
+    "Published Monte Carlo work by Puxeu Vaque et al. reports nominal internal cavity volume 637.1 mm3, central-electrode volume 22.02 mm3 and net cavity volume 615.1 mm3 for PTW 30013. Model A constrains the straight cylindrical representation to those aggregate volumes.",
+    "This is not a manufacturer blueprint. Stem, guard and detailed tip geometry are intentionally excluded from Model A and will be treated as a later model-sensitivity term."
+  ]
+}
