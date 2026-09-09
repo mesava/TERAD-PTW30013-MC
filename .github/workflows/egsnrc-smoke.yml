@@ -84,23 +84,35 @@ jobs:
         run: |
           export EGS_HOME="$EGSRUN/egs_home/"
           export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
-          source "$EGSRUN/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+
+          echo "EGS_HOME=$EGS_HOME"
+          echo "EGS_CONFIG=$EGS_CONFIG"
+          echo "HEN_HOUSE=$HEN_HOUSE"
+          test -d "$EGS_HOME/egs_chamber"
+          ls -la "$EGS_HOME/egs_chamber" | head -n 40
           cd "$EGS_HOME/egs_chamber"
           echo "Building from $(pwd)"
           set -o pipefail
           make 2>&1 | tee "$GITHUB_WORKSPACE/egs_chamber_build.log"
+          echo "===== built executables ====="
+          ls -la "$EGS_HOME/bin/gha" || true
 
       - name: Run official egs_chamber smoke example
         shell: bash
         run: |
           export EGS_HOME="$EGSRUN/egs_home/"
           export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
-          source "$EGSRUN/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+
           cd "$EGS_HOME/egs_chamber"
           cp example2_chamber_dd.egsinp smoke.egsinp
           sed -i 's/ncase = 100000/ncase = 1000/' smoke.egsinp
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
           set -o pipefail
-          egs_chamber -i smoke -p 521icru 2>&1 | tee "$GITHUB_WORKSPACE/egs_chamber_smoke.log"
+          "$EGS_HOME/bin/gha/egs_chamber" -i smoke -p 521icru 2>&1 | tee "$GITHUB_WORKSPACE/egs_chamber_smoke.log"
 
       - name: Upload build and smoke logs
         uses: actions/upload-artifact@v4
