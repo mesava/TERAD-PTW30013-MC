@@ -108,8 +108,8 @@ jobs:
           export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
 
           cd "$EGS_HOME/egs_chamber"
-          cp example2_chamber_dd.egsinp smoke.egsinp
-          sed -i 's/ncase = 100000/ncase = 1000/' smoke.egsinp
+          cp example1_co60_Pfactors.egsinp smoke.egsinp
+          sed -Ei 's/ncase[[:space:]]*=[[:space:]]*[0-9]+/ncase = 1000/' smoke.egsinp
           test -x "$EGS_HOME/bin/gha/egs_chamber"
           set -o pipefail
           "$EGS_HOME/bin/gha/egs_chamber" -i smoke -p 521icru 2>&1 | tee "$GITHUB_WORKSPACE/egs_chamber_smoke.log"
