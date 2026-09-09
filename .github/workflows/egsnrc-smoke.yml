@@ -1,0 +1,68 @@
+name: EGSnrc smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/egsnrc-smoke.yml'
+      - 'ci/**'
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Install EGSnrc build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make expect tk tcl libmotif-dev
+
+      - name: Clone pinned EGSnrc 2026 release commit
+        run: |
+          git clone https://github.com/nrc-cnrc/EGSnrc.git EGSnrc
+          cd EGSnrc
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+
+      - name: Configure EGSnrc non-interactively
+        shell: bash
+        run: |
+          cd EGSnrc
+          export USER=runner
+          export EGS_BASE="$PWD"
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3
+          echo "EGS_HOME=$PWD/egs_home/" >> "$GITHUB_ENV"
+          echo "EGS_CONFIG=$PWD/HEN_HOUSE/specs/gha.conf" >> "$GITHUB_ENV"
+          echo "HEN_HOUSE=$PWD/HEN_HOUSE/" >> "$GITHUB_ENV"
+
+      - name: Build egs_chamber
+        shell: bash
+        run: |
+          cd EGSnrc
+          export EGS_HOME="$PWD/egs_home/"
+          export EGS_CONFIG="$PWD/HEN_HOUSE/specs/gha.conf"
+          source "$PWD/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
+          cd "$PWD/HEN_HOUSE/user_codes/egs_chamber"
+          make
+
+      - name: Run official egs_chamber smoke example
+        shell: bash
+        run: |
+          cd EGSnrc
+          export EGS_HOME="$PWD/egs_home/"
+          export EGS_CONFIG="$PWD/HEN_HOUSE/specs/gha.conf"
+          source "$PWD/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
+          cd "$PWD/HEN_HOUSE/user_codes/egs_chamber"
+          cp example2_chamber_dd.egsinp smoke.egsinp
+          sed -i 's/ncase = 100000/ncase = 1000/' smoke.egsinp
+          egs_chamber -i smoke -p 521icru | tee "$GITHUB_WORKSPACE/egs_chamber_smoke.log"
+
+      - name: Upload smoke-test log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: egsnrc-smoke-log
+          path: egs_chamber_smoke.log
+          if-no-files-found: warn
