@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
+    env:
+      EGSRUN: /tmp/EGSnrc
+
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
@@ -21,18 +24,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
 
-      - name: Clone pinned EGSnrc 2026 release commit
+      - name: Clone pinned EGSnrc 2026 release commit into short path
         run: |
-          git clone https://github.com/nrc-cnrc/EGSnrc.git EGSnrc
-          cd EGSnrc
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
           git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
           git rev-parse HEAD
+          echo "EGSnrc path length: ${#PWD} chars"
 
       - name: Configure EGSnrc non-interactively
         id: configure
         shell: bash
         run: |
-          cd EGSnrc
+          cd "$EGSRUN"
           export USER=runner
           export EGS_BASE="$PWD"
 
@@ -44,15 +49,16 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/egsnrc-config-logs"
           cp -f HEN_HOUSE/scripts/configure.log "$GITHUB_WORKSPACE/egsnrc-config-logs/configure.log" 2>/dev/null || true
           cp -f HEN_HOUSE/log/*.log "$GITHUB_WORKSPACE/egsnrc-config-logs/" 2>/dev/null || true
+          cp -f HEN_HOUSE/lib/gha/machine.macros "$GITHUB_WORKSPACE/egsnrc-config-logs/machine.macros" 2>/dev/null || true
+          cp -f HEN_HOUSE/pegs4/pegs4_gha.mortlst "$GITHUB_WORKSPACE/egsnrc-config-logs/pegs4_gha.mortlst" 2>/dev/null || true
+          cp -f HEN_HOUSE/pegs4/mortjob.mortran "$GITHUB_WORKSPACE/egsnrc-config-logs/mortjob.mortran" 2>/dev/null || true
 
           echo "===== configure.log ====="
           cat HEN_HOUSE/scripts/configure.log 2>/dev/null || true
-          echo "===== HEN_HOUSE/log ====="
-          for f in HEN_HOUSE/log/*.log; do
-            [ -f "$f" ] || continue
-            echo "----- $f -----"
-            cat "$f"
-          done
+          echo "===== machine.macros ====="
+          nl -ba HEN_HOUSE/lib/gha/machine.macros 2>/dev/null || true
+          echo "===== pegs4 mortlst tail ====="
+          tail -n 120 HEN_HOUSE/pegs4/pegs4_gha.mortlst 2>/dev/null || true
 
           if [ "$cfg_status" -ne 0 ]; then
             echo "EGSnrc configuration failed with exit code $cfg_status"
@@ -76,23 +82,25 @@ jobs:
       - name: Build egs_chamber
         shell: bash
         run: |
-          cd EGSnrc
+          cd "$EGSRUN"
           export EGS_HOME="$PWD/egs_home/"
           export EGS_CONFIG="$PWD/HEN_HOUSE/specs/gha.conf"
           source "$PWD/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
           cd "$PWD/HEN_HOUSE/user_codes/egs_chamber"
+          set -o pipefail
           make 2>&1 | tee "$GITHUB_WORKSPACE/egs_chamber_build.log"
 
       - name: Run official egs_chamber smoke example
         shell: bash
         run: |
-          cd EGSnrc
+          cd "$EGSRUN"
           export EGS_HOME="$PWD/egs_home/"
           export EGS_CONFIG="$PWD/HEN_HOUSE/specs/gha.conf"
           source "$PWD/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
           cd "$PWD/HEN_HOUSE/user_codes/egs_chamber"
           cp example2_chamber_dd.egsinp smoke.egsinp
           sed -i 's/ncase = 100000/ncase = 1000/' smoke.egsinp
+          set -o pipefail
           egs_chamber -i smoke -p 521icru 2>&1 | tee "$GITHUB_WORKSPACE/egs_chamber_smoke.log"
 
       - name: Upload build and smoke logs
