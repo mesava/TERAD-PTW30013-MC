@@ -103,9 +103,16 @@ jobs:
             exit 1
           fi
 
-          # Confirm that this diagnostic actually used XCSE and the expected
-          # stock-521icru transport limits rather than silently reverting.
-          grep -Eqi 'photon cross-section enhancement = On|enhancement' stage2_modelA_q120_xcse.log
+          # These warnings mean the per-geometry XCSE configuration was not
+          # parsed, so a nominally successful transport run is not acceptable.
+          if grep -Eqi "missing/wrong 'enhance regions'|missing/wrong 'enhancement'|number of 'enhance regions' must match" stage2_modelA_q120_xcse.log; then
+            echo 'Stage 2 XCSE scoring configuration was not accepted.'
+            grep -Ein "enhance regions|enhancement" stage2_modelA_q120_xcse.log || true
+            exit 1
+          fi
+
+          # Require the global egs_chamber XCSE switch to be truly active.
+          grep -Eq 'photon cross-section enhancement[[:space:]]*=[[:space:]]*On' stage2_modelA_q120_xcse.log
           grep -Eq 'Global Pcut[[:space:]]+0\.01' stage2_modelA_q120_xcse.log
           grep -Eq 'Global Ecut[[:space:]]+0\.521' stage2_modelA_q120_xcse.log
 
