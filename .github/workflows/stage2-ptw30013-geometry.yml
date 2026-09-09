@@ -8,6 +8,7 @@ on:
       - 'data/ptw30013_modelA.json'
       - 'scripts/validate_ptw30013_modelA.py'
       - 'inputs/stage2_ptw30013_modelA_q120_smoke.egsinp'
+      - 'inputs/stage2_ptw30013_modelA_q120_xcse.egsinp'
       - 'scripts/generate_spekpy_spectra.py'
       - 'data/beam_qualities.csv'
       - 'docs/PTW30013_GEOMETRY_STAGE2.md'
@@ -76,7 +77,7 @@ jobs:
           make 2>&1 | tee "$GITHUB_WORKSPACE/stage2_egs_chamber_build.log"
           test -x "$EGS_HOME/bin/gha/egs_chamber"
 
-      - name: Run PTW30013 Model A Q120 smoke calculation
+      - name: Run PTW30013 Model A Q120 XCSE diagnostic
         shell: bash
         run: |
           export EGS_HOME="$EGSRUN/egs_home/"
@@ -84,45 +85,52 @@ jobs:
           export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
           export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
 
-          cp "$GITHUB_WORKSPACE/inputs/stage2_ptw30013_modelA_q120_smoke.egsinp" "$EGS_HOME/egs_chamber/stage2_modelA_q120_smoke.egsinp"
+          cp "$GITHUB_WORKSPACE/inputs/stage2_ptw30013_modelA_q120_xcse.egsinp" "$EGS_HOME/egs_chamber/stage2_modelA_q120_xcse.egsinp"
           cp "$GITHUB_WORKSPACE/spectra/Q120.ensrc" "$EGS_HOME/egs_chamber/Q120.ensrc"
 
           cd "$EGS_HOME/egs_chamber"
           set -o pipefail
-          "$EGS_HOME/bin/gha/egs_chamber" -i stage2_modelA_q120_smoke -p 521icru 2>&1 | tee "$GITHUB_WORKSPACE/stage2_modelA_q120_smoke.log"
+          "$EGS_HOME/bin/gha/egs_chamber" -i stage2_modelA_q120_xcse -p 521icru 2>&1 | tee "$GITHUB_WORKSPACE/stage2_modelA_q120_xcse.log"
 
-      - name: Validate smoke output
+      - name: Validate XCSE cavity-scoring diagnostic
         shell: bash
         run: |
-          test -s stage2_modelA_q120_smoke.log
+          test -s stage2_modelA_q120_xcse.log
 
-          # egs_chamber emits "missing/wrong 'enhance regions'" and
-          # "missing/wrong 'enhancement'" when XCSE is intentionally unused.
-          # Those messages are informational here, not fatal geometry errors.
-          if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.' stage2_modelA_q120_smoke.log; then
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.' stage2_modelA_q120_xcse.log; then
             echo 'Stage 2 log contains a fatal/geometry diagnostic.'
-            grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.' stage2_modelA_q120_smoke.log || true
+            grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.' stage2_modelA_q120_xcse.log || true
             exit 1
           fi
 
+          # Confirm that this diagnostic actually used XCSE and the expected
+          # stock-521icru transport limits rather than silently reverting.
+          grep -Eqi 'photon cross-section enhancement = On|enhancement' stage2_modelA_q120_xcse.log
+          grep -Eq 'Global Pcut[[:space:]]+0\.01' stage2_modelA_q120_xcse.log
+          grep -Eq 'Global Ecut[[:space:]]+0\.521' stage2_modelA_q120_xcse.log
+
           echo '===== dose-related output ====='
-          grep -Ei 'dose|cavity|history|histories' stage2_modelA_q120_smoke.log | tail -n 80 || true
+          grep -Ei 'dose|cavity|history|histories|enhancement' stage2_modelA_q120_xcse.log | tail -n 120 || true
 
           python - <<'PY'
           import re
           from pathlib import Path
 
-          text = Path('stage2_modelA_q120_smoke.log').read_text(errors='replace')
-          m = re.search(r'ptw30013_modelA_in_water\s+([0-9.+\-Ee]+)\s+\+/-', text)
+          text = Path('stage2_modelA_q120_xcse.log').read_text(errors='replace')
+          m = re.search(r'ptw30013_modelA_in_water\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)%', text)
           if not m:
-              raise SystemExit('Could not parse PTW30013 cavity dose from smoke output.')
+              raise SystemExit('Could not parse PTW30013 cavity dose from XCSE diagnostic.')
           dose = float(m.group(1))
+          unc = float(m.group(2))
           print(f'Parsed PTW30013 cavity dose: {dose:.8e}')
+          print(f'Parsed statistical uncertainty: {unc:.3f} %')
           if not dose > 0.0:
               raise SystemExit('PTW30013 cavity dose is not positive; Stage 2 is not validated.')
+          if not unc < 100.0:
+              raise SystemExit('PTW30013 cavity score has no useful events; Stage 2 is not validated.')
           PY
 
-          echo 'Stage 2 PTW30013 Model A smoke run completed with positive cavity dose.'
+          echo 'Stage 2 PTW30013 Model A cavity scoring validated with XCSE.'
 
       - name: Upload Stage 2 diagnostics
         uses: actions/upload-artifact@v4
@@ -134,7 +142,7 @@ jobs:
             stage2_spekpy.log
             stage2_configure.log
             stage2_egs_chamber_build.log
-            stage2_modelA_q120_smoke.log
+            stage2_modelA_q120_xcse.log
             results/spekpy_fit_summary.csv
             spectra/Q120.ensrc
           if-no-files-found: warn
