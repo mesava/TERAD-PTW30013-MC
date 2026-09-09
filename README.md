@@ -44,4 +44,21 @@ The project is pinned initially to the official NRC EGSnrc 2026 master release c
 
 `f4d029f625a6c96ef3456e0b6d91d46ffce613e7`
 
-The first CI milestone is only an EGSnrc/egs_chamber build-and-smoke-test. Production Monte Carlo cases will be added after the official examples and input syntax are reproduced successfully.
+The CI smoke test has successfully built EGSnrc and `egs_chamber` and completed an official Co-60 Monte Carlo example.
+
+## Project status
+
+| Stage | Description | Status |
+|---:|---|---|
+| 0 | EGSnrc / egs_chamber CI infrastructure | ✅ complete |
+| 1 | SpekPy TERAD spectra fitted to measured Cu HVL | 🔄 in progress |
+| 2 | PTW 30013 chamber geometry | pending |
+| 3 | Published medium-kV benchmark | pending |
+| 4 | Co-60 reference ratio | pending |
+| 5 | TERAD k_Q,Co | pending |
+| 6 | Spectrum / geometry sensitivity | pending |
+| 7 | Field and SSD geometry correction k_g | pending |
+| 8 | RW3-to-water correction | pending |
+| 9 | Final coefficients and uncertainty budget | pending |
+
+Stage 1 uses SpekPy 2.5.4 with a nominal 20 degree W-target model and `kqp` physics. The unknown tube-head/inherent filtration is represented initially by a fitted non-negative equivalent-Al parameter. This parameter is a model nuisance parameter, not a claimed physical TERAD filtration thickness. See `docs/SPECTRUM_MODEL_STAGE1.md`.
