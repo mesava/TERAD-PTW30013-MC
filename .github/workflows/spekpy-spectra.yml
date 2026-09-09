@@ -1,0 +1,89 @@
+name: TERAD SpekPy spectra
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/spekpy-spectra.yml'
+      - 'data/beam_qualities.csv'
+      - 'scripts/generate_spekpy_spectra.py'
+      - 'docs/SPECTRUM_MODEL_STAGE1.md'
+
+jobs:
+  generate-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned SpekPy
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10'
+          python - <<'PY'
+          from importlib.metadata import version
+          import spekpy
+          import scipy
+          print('SpekPy:', version('spekpy'))
+          print('SciPy:', scipy.__version__)
+          PY
+
+      - name: Generate HVL-fitted TERAD spectra
+        run: |
+          python scripts/generate_spekpy_spectra.py 2>&1 | tee spekpy_stage1.log
+
+      - name: Show fit summary
+        run: |
+          echo '===== Stage 1 fit summary ====='
+          cat results/spekpy_fit_summary.csv
+          echo '===== EGSnrc spectrum headers ====='
+          for f in spectra/Q*.ensrc; do
+            echo "--- $f"
+            head -n 4 "$f"
+          done
+
+      - name: Validate expected outputs
+        run: |
+          test -s results/spekpy_fit_summary.csv
+          for q in Q120 Q140 Q150 Q200; do
+            test -s "spectra/${q}.ensrc"
+            test -s "spectra/${q}_spekpy.csv"
+          done
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          rows = list(csv.DictReader(open('results/spekpy_fit_summary.csv')))
+          assert len(rows) == 4, f'Expected 4 beam qualities, got {len(rows)}'
+          for row in rows:
+              err = abs(float(row['relative_hvl_error_percent']))
+              assert err <= 0.5, f"{row['beam_id']} HVL error {err}% exceeds 0.5%"
+              eq_al = float(row['fitted_equivalent_al_mm'])
+              assert eq_al >= 0, f"{row['beam_id']} has negative equivalent Al"
+              ensrc = Path('spectra') / f"{row['beam_id']}.ensrc"
+              lines = ensrc.read_text().splitlines()
+              header = [x.strip() for x in lines[1].split(',')]
+              n = int(header[0])
+              mode = int(header[2])
+              assert mode == 1, f'{ensrc}: expected EGSnrc MODE=1'
+              assert len(lines) == n + 2, f'{ensrc}: inconsistent bin count'
+          print('Stage 1 validation passed for all four qualities.')
+          PY
+
+      - name: Upload Stage 1 spectra and diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terad-spekpy-stage1
+          path: |
+            spectra/**
+            results/spekpy_fit_summary.csv
+            spekpy_stage1.log
+          if-no-files-found: warn
