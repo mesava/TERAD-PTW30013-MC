@@ -1,0 +1,160 @@
+###############################################################################
+# Stage 2 diagnostic: PTW 30013 Model A in water, TERAD Q120 spectrum
+#
+# Purpose: confirm that the intended PTW30013 air-cavity regions score a finite
+# positive dose. This is a geometry/scoring diagnostic, NOT a final kQ run.
+#
+# Compared with the first smoke input, this case follows the official
+# egs_chamber Farmer examples by enabling photon cross-section enhancement
+# (XCSE) in all non-base regions. This greatly increases useful interactions in
+# the small chamber while preserving an unbiased estimator through weighting.
+###############################################################################
+
+:start geometry definition:
+
+    :start geometry:
+        library = egs_cones
+        type = EGS_ConeStack
+        name = ptw30013_modelA
+        axis = 1.09 0 0  -1 0 0
+
+        :start layer:
+            thickness = 0.03
+            top radii    = 0.305 0.314 0.3475
+            bottom radii = 0.305 0.314 0.3475
+            media = AIR521ICRU 170C521ICRU PMMA521ICRU
+        :stop layer:
+
+        :start layer:
+            thickness = 2.12
+            top radii    = 0.0575 0.305 0.314 0.3475
+            bottom radii = 0.0575 0.305 0.314 0.3475
+            media = AL521ICRU AIR521ICRU 170C521ICRU PMMA521ICRU
+        :stop layer:
+
+        :start layer:
+            thickness = 0.03
+            top radii    = 0.305 0.314 0.3475
+            bottom radii = 0.305 0.314 0.3475
+            media = AIR521ICRU 170C521ICRU PMMA521ICRU
+        :stop layer:
+
+        # EGSnrc 170C521ICRU rho=1.7 g/cm3; PTW graphite rho=1.85 g/cm3.
+        set relative density = 1 1 1.088235294117647
+        set relative density = 6 6 1.088235294117647
+        set relative density = 9 9 1.088235294117647
+    :stop geometry:
+
+    :start geometry:
+        library = egs_cylinders
+        type = EGS_XCylinders
+        radii = 0.305
+        name = ptw30013_cavity_cyl
+    :stop geometry:
+    :start geometry:
+        library = egs_planes
+        type = EGS_Xplanes
+        positions = -1.09 1.09
+        name = ptw30013_cavity_planes
+    :stop geometry:
+    :start geometry:
+        library = egs_ndgeometry
+        name = ptw30013_cavity_envelope
+        dimensions = ptw30013_cavity_planes ptw30013_cavity_cyl
+    :stop geometry:
+
+    :start geometry:
+        library = egs_ndgeometry
+        type = EGS_XYZGeometry
+        name = water_phantom
+        x-planes = -15 15
+        y-planes = -15 15
+        z-planes = -2 28
+        :start media input:
+            media = H2O521ICRU
+        :stop media input:
+    :stop geometry:
+
+    :start geometry:
+        library = egs_genvelope
+        name = ptw30013_modelA_in_water
+        base geometry = water_phantom
+        inscribed geometries = ptw30013_modelA
+    :stop geometry:
+
+    simulation geometry = ptw30013_modelA_in_water
+
+:stop geometry definition:
+
+###############################################################################
+# Source: point at z=-52 cm, water surface z=-2 cm -> SSD=50 cm.
+# Rectangle at chamber plane corresponds to 8x10 cm2 at the surface.
+###############################################################################
+:start source definition:
+    :start source:
+        name = terad_q120
+        library = egs_collimated_source
+        charge = 0
+        :start source shape:
+            type = point
+            position = 0 0 -52
+        :stop source shape:
+        :start target shape:
+            library = egs_rectangle
+            rectangle = -4.16 -5.20 4.16 5.20
+        :stop target shape:
+        :start spectrum:
+            type = tabulated spectrum
+            spectrum file = $EGS_HOME/egs_chamber/Q120.ensrc
+        :stop spectrum:
+    :stop source:
+    simulation source = terad_q120
+:stop source definition:
+
+###############################################################################
+# Scoring
+# Bare ConeStack cavity regions = 0,5,8. The one-region water envelope adds 1,
+# hence cavity regions = 1,6,9, consistent with the official egs_chamber
+# envelope-numbering convention.
+###############################################################################
+:start scoring options:
+    :start calculation geometry:
+        geometry name = ptw30013_modelA_in_water
+        cavity regions = 1 6 9
+        cavity mass = 7.41048384e-4
+        cavity geometry = ptw30013_cavity_envelope
+
+        # Official egs_chamber examples use XCSE for Farmer chambers. -1 means
+        # all regions except region 0 of the calculation geometry.
+        enhance regions = -1
+        enhancement = 512
+    :stop calculation geometry:
+:stop scoring options:
+
+###############################################################################
+# Transport settings for Stage 2 diagnostic only.
+# NOTE: the stock 521icru PEGS data have AP=0.010 MeV and AE=0.521 MeV, so
+# requesting lower cuts is clamped by HATCH. We therefore state those actual
+# limits explicitly here. Stage 3 will use low-energy cross-section data that
+# support the intended 1-keV photon/electron kinetic cutoffs before benchmark.
+###############################################################################
+:start MC transport parameter:
+    Global ECUT = 0.521
+    Global PCUT = 0.010
+    Global SMAX = 1e10
+    ESTEPE = 0.25
+    XIMAX = 0.5
+    Boundary crossing algorithm = exact
+    Electron-step algorithm = PRESTA-II
+    Skin depth for BCA = 3
+    Spin effects = On
+    Bound Compton scattering = On
+    Rayleigh scattering = On
+    Atomic relaxations = On
+    Photoelectron angular sampling = On
+    Photon cross sections = mcdf-xcom
+:stop MC transport parameter:
+
+:start run control:
+    ncase = 50000
+:stop run control:
