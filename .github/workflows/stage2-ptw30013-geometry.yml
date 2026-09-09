@@ -95,14 +95,34 @@ jobs:
         shell: bash
         run: |
           test -s stage2_modelA_q120_smoke.log
-          if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong' stage2_modelA_q120_smoke.log; then
+
+          # egs_chamber emits "missing/wrong 'enhance regions'" and
+          # "missing/wrong 'enhancement'" when XCSE is intentionally unused.
+          # Those messages are informational here, not fatal geometry errors.
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.' stage2_modelA_q120_smoke.log; then
             echo 'Stage 2 log contains a fatal/geometry diagnostic.'
-            grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong' stage2_modelA_q120_smoke.log || true
+            grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.' stage2_modelA_q120_smoke.log || true
             exit 1
           fi
+
           echo '===== dose-related output ====='
           grep -Ei 'dose|cavity|history|histories' stage2_modelA_q120_smoke.log | tail -n 80 || true
-          echo 'Stage 2 PTW30013 Model A smoke run completed.'
+
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path('stage2_modelA_q120_smoke.log').read_text(errors='replace')
+          m = re.search(r'ptw30013_modelA_in_water\s+([0-9.+\-Ee]+)\s+\+/-', text)
+          if not m:
+              raise SystemExit('Could not parse PTW30013 cavity dose from smoke output.')
+          dose = float(m.group(1))
+          print(f'Parsed PTW30013 cavity dose: {dose:.8e}')
+          if not dose > 0.0:
+              raise SystemExit('PTW30013 cavity dose is not positive; Stage 2 is not validated.')
+          PY
+
+          echo 'Stage 2 PTW30013 Model A smoke run completed with positive cavity dose.'
 
       - name: Upload Stage 2 diagnostics
         uses: actions/upload-artifact@v4
