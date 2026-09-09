@@ -132,6 +132,15 @@
 :stop scoring options:
 
 ###############################################################################
+# Global egs_chamber variance-reduction switch.
+# egs_chamber only parses per-geometry 'enhance regions'/'enhancement' when
+# this global switch is enabled. This was the missing switch in Run #4.
+###############################################################################
+:start variance reduction:
+    cs enhancement = 1
+:stop variance reduction:
+
+###############################################################################
 # Transport settings for Stage 2 diagnostic only.
 # NOTE: the stock 521icru PEGS data have AP=0.010 MeV and AE=0.521 MeV, so
 # requesting lower cuts is clamped by HATCH. We therefore state those actual
