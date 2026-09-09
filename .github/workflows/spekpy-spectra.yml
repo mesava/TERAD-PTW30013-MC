@@ -29,14 +29,15 @@ jobs:
           python -m pip install 'spekpy==2.5.4' 'scipy>=1.10'
           python - <<'PY'
           from importlib.metadata import version
-          import spekpy
           import scipy
           print('SpekPy:', version('spekpy'))
           print('SciPy:', scipy.__version__)
           PY
 
       - name: Generate HVL-fitted TERAD spectra
+        shell: bash
         run: |
+          set -o pipefail
           python scripts/generate_spekpy_spectra.py 2>&1 | tee spekpy_stage1.log
 
       - name: Show fit summary
