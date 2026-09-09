@@ -82,22 +82,21 @@ jobs:
       - name: Build egs_chamber
         shell: bash
         run: |
-          cd "$EGSRUN"
-          export EGS_HOME="$PWD/egs_home/"
-          export EGS_CONFIG="$PWD/HEN_HOUSE/specs/gha.conf"
-          source "$PWD/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
-          cd "$PWD/HEN_HOUSE/user_codes/egs_chamber"
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          source "$EGSRUN/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
+          cd "$EGS_HOME/egs_chamber"
+          echo "Building from $(pwd)"
           set -o pipefail
           make 2>&1 | tee "$GITHUB_WORKSPACE/egs_chamber_build.log"
 
       - name: Run official egs_chamber smoke example
         shell: bash
         run: |
-          cd "$EGSRUN"
-          export EGS_HOME="$PWD/egs_home/"
-          export EGS_CONFIG="$PWD/HEN_HOUSE/specs/gha.conf"
-          source "$PWD/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
-          cd "$PWD/HEN_HOUSE/user_codes/egs_chamber"
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          source "$EGSRUN/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
+          cd "$EGS_HOME/egs_chamber"
           cp example2_chamber_dd.egsinp smoke.egsinp
           sed -i 's/ncase = 100000/ncase = 1000/' smoke.egsinp
           set -o pipefail
