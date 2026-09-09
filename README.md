@@ -51,8 +51,8 @@ The CI smoke test has successfully built EGSnrc and `egs_chamber` and completed 
 | Stage | Description | Status |
 |---:|---|---|
 | 0 | EGSnrc / egs_chamber CI infrastructure | ✅ complete |
-| 1 | SpekPy TERAD spectra fitted to measured Cu HVL | 🔄 in progress |
-| 2 | PTW 30013 chamber geometry | pending |
+| 1 | SpekPy TERAD spectra fitted to measured Cu HVL | ✅ complete |
+| 2 | PTW 30013 chamber geometry | 🔄 next |
 | 3 | Published medium-kV benchmark | pending |
 | 4 | Co-60 reference ratio | pending |
 | 5 | TERAD k_Q,Co | pending |
@@ -61,4 +61,17 @@ The CI smoke test has successfully built EGSnrc and `egs_chamber` and completed 
 | 8 | RW3-to-water correction | pending |
 | 9 | Final coefficients and uncertainty budget | pending |
 
-Stage 1 uses SpekPy 2.5.4 with a nominal 20 degree W-target model and `kqp` physics. The unknown tube-head/inherent filtration is represented initially by a fitted non-negative equivalent-Al parameter. This parameter is a model nuisance parameter, not a claimed physical TERAD filtration thickness. See `docs/SPECTRUM_MODEL_STAGE1.md`.
+## Stage 1 accepted nominal spectra
+
+The accepted first-pass spectrum model uses SpekPy 2.5.4, a W target, nominal 20 degree anode angle, `kqp` physics and 0.5 keV bins. The unknown tube-head/inherent filtration is represented by a fitted non-negative equivalent-Al nuisance parameter; it is not a claimed physical TERAD filtration thickness.
+
+| Beam | measured Cu HVL1 (mm) | initial model (mm) | fitted eq. Al (mm) | final model (mm) | mean E (keV) |
+|---|---:|---:|---:|---:|---:|
+| Q120 | 0.224000 | 0.207172 | 0.447246 | 0.224000 | 56.8438 |
+| Q140 | 0.410000 | 0.388502 | 0.525157 | 0.410000 | 65.4082 |
+| Q150 | 0.729000 | 0.723665 | 0.264108 | 0.729000 | 75.3565 |
+| Q200 | 1.452000 | 1.452955 | 0.000000 | 1.452955 | 96.2098 |
+
+Q200 is already only +0.0658% harder than the measured HVL with the known 1.0 mm Cu filter, so no unphysical negative added filtration is used. All four qualities satisfy the Stage 1 HVL acceptance criterion of ±0.5%.
+
+See `docs/SPECTRUM_MODEL_STAGE1.md` and `results/spekpy_fit_summary.csv`.
