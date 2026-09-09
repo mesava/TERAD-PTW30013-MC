@@ -124,7 +124,7 @@ jobs:
           from pathlib import Path
 
           text = Path('stage2_modelA_q120_xcse.log').read_text(errors='replace')
-          m = re.search(r'ptw30013_modelA_in_water\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)%', text)
+          m = re.search(r'ptw30013_modelA_in_water\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s*%', text)
           if not m:
               raise SystemExit('Could not parse PTW30013 cavity dose from XCSE diagnostic.')
           dose = float(m.group(1))
