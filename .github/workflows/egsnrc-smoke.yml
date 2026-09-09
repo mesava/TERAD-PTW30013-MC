@@ -9,33 +9,69 @@ on:
 
 jobs:
   build-and-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
+
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Install EGSnrc build prerequisites
+      - name: Install official EGSnrc devcontainer prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y git gcc g++ gfortran make expect tk tcl libmotif-dev
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
 
       - name: Clone pinned EGSnrc 2026 release commit
         run: |
           git clone https://github.com/nrc-cnrc/EGSnrc.git EGSnrc
           cd EGSnrc
           git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          git rev-parse HEAD
 
       - name: Configure EGSnrc non-interactively
+        id: configure
         shell: bash
         run: |
           cd EGSnrc
           export USER=runner
           export EGS_BASE="$PWD"
-          ./HEN_HOUSE/scripts/configure.expect gha.conf 3
+
+          set +e
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/configure_stdout.log"
+          cfg_status=${PIPESTATUS[0]}
+          set -e
+
+          mkdir -p "$GITHUB_WORKSPACE/egsnrc-config-logs"
+          cp -f HEN_HOUSE/scripts/configure.log "$GITHUB_WORKSPACE/egsnrc-config-logs/configure.log" 2>/dev/null || true
+          cp -f HEN_HOUSE/log/*.log "$GITHUB_WORKSPACE/egsnrc-config-logs/" 2>/dev/null || true
+
+          echo "===== configure.log ====="
+          cat HEN_HOUSE/scripts/configure.log 2>/dev/null || true
+          echo "===== HEN_HOUSE/log ====="
+          for f in HEN_HOUSE/log/*.log; do
+            [ -f "$f" ] || continue
+            echo "----- $f -----"
+            cat "$f"
+          done
+
+          if [ "$cfg_status" -ne 0 ]; then
+            echo "EGSnrc configuration failed with exit code $cfg_status"
+            exit "$cfg_status"
+          fi
+
           echo "EGS_HOME=$PWD/egs_home/" >> "$GITHUB_ENV"
           echo "EGS_CONFIG=$PWD/HEN_HOUSE/specs/gha.conf" >> "$GITHUB_ENV"
           echo "HEN_HOUSE=$PWD/HEN_HOUSE/" >> "$GITHUB_ENV"
+
+      - name: Upload configuration diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: egsnrc-config-diagnostics
+          path: |
+            configure_stdout.log
+            egsnrc-config-logs/**
+          if-no-files-found: warn
 
       - name: Build egs_chamber
         shell: bash
@@ -45,7 +81,7 @@ jobs:
           export EGS_CONFIG="$PWD/HEN_HOUSE/specs/gha.conf"
           source "$PWD/HEN_HOUSE/scripts/egsnrc_bashrc_additions"
           cd "$PWD/HEN_HOUSE/user_codes/egs_chamber"
-          make
+          make 2>&1 | tee "$GITHUB_WORKSPACE/egs_chamber_build.log"
 
       - name: Run official egs_chamber smoke example
         shell: bash
@@ -57,12 +93,14 @@ jobs:
           cd "$PWD/HEN_HOUSE/user_codes/egs_chamber"
           cp example2_chamber_dd.egsinp smoke.egsinp
           sed -i 's/ncase = 100000/ncase = 1000/' smoke.egsinp
-          egs_chamber -i smoke -p 521icru | tee "$GITHUB_WORKSPACE/egs_chamber_smoke.log"
+          egs_chamber -i smoke -p 521icru 2>&1 | tee "$GITHUB_WORKSPACE/egs_chamber_smoke.log"
 
-      - name: Upload smoke-test log
+      - name: Upload build and smoke logs
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: egsnrc-smoke-log
-          path: egs_chamber_smoke.log
+          name: egsnrc-smoke-logs
+          path: |
+            egs_chamber_build.log
+            egs_chamber_smoke.log
           if-no-files-found: warn
