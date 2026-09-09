@@ -58,6 +58,28 @@
         set relative density = 9 9 1.088235294117647
     :stop geometry:
 
+    # egs_chamber requires a separately named geometry that encompasses the
+    # chamber cavity for cavity scoring bookkeeping. This geometry is not
+    # inscribed in the simulation geometry and therefore does not change
+    # particle transport or the PTW 30013 physical model.
+    :start geometry:
+        library = egs_cylinders
+        type = EGS_XCylinders
+        radii = 0.305
+        name = ptw30013_cavity_cyl
+    :stop geometry:
+    :start geometry:
+        library = egs_planes
+        type = EGS_Xplanes
+        positions = -1.09 1.09
+        name = ptw30013_cavity_planes
+    :stop geometry:
+    :start geometry:
+        library = egs_ndgeometry
+        name = ptw30013_cavity_envelope
+        dimensions = ptw30013_cavity_planes ptw30013_cavity_cyl
+    :stop geometry:
+
     # 30 x 30 x 30 cm3 water phantom. Chamber reference point is at z=0,
     # therefore the surface at z=-2 cm places the reference point at 2 cm depth.
     :start geometry:
@@ -120,6 +142,7 @@
         geometry name = ptw30013_modelA_in_water
         cavity regions = 1 6 9
         cavity mass = 7.41048384e-4
+        cavity geometry = ptw30013_cavity_envelope
     :stop calculation geometry:
 :stop scoring options:
 
