@@ -1,0 +1,149 @@
+###############################################################################
+# Stage 2 geometry smoke test: PTW 30013 Model A in water, TERAD Q120 spectrum
+#
+# Purpose: validate that the first-pass chamber geometry is accepted by
+# egs_chamber and produces a finite non-zero cavity dose. This is NOT a final
+# kQ calculation and uses no variance-reduction optimization.
+###############################################################################
+
+:start geometry definition:
+
+    # -------------------------------------------------------------------------
+    # PTW 30013 Model A: volume-constrained active body only.
+    # Axis is along x and the chamber midpoint is at (0,0,0).
+    #
+    # Internal cavity: r = 0.305 cm, total length = 2.180 cm.
+    # Central Al electrode: r = 0.0575 cm, length = 2.120 cm.
+    # This leaves 0.030 cm air-only end sections at each side.
+    # Wall, from cavity outward: 0.009 cm graphite + 0.0335 cm PMMA.
+    #
+    # EGS_ConeStack uses four region slots per layer because the middle layer
+    # has four media. Bare-chamber air-cavity regions are therefore 0,5,8.
+    # In the one-region water envelope they become 1,6,9.
+    # -------------------------------------------------------------------------
+    :start geometry:
+        library = egs_cones
+        type = EGS_ConeStack
+        name = ptw30013_modelA
+        axis = 1.09 0 0  -1 0 0
+
+        # front 0.30 mm: no central electrode
+        :start layer:
+            thickness = 0.03
+            top radii    = 0.305 0.314 0.3475
+            bottom radii = 0.305 0.314 0.3475
+            media = AIR521ICRU 170C521ICRU PMMA521ICRU
+        :stop layer:
+
+        # central 21.20 mm: Al electrode + air + graphite + PMMA
+        :start layer:
+            thickness = 2.12
+            top radii    = 0.0575 0.305 0.314 0.3475
+            bottom radii = 0.0575 0.305 0.314 0.3475
+            media = AL521ICRU AIR521ICRU 170C521ICRU PMMA521ICRU
+        :stop layer:
+
+        # back 0.30 mm: no central electrode
+        :start layer:
+            thickness = 0.03
+            top radii    = 0.305 0.314 0.3475
+            bottom radii = 0.305 0.314 0.3475
+            media = AIR521ICRU 170C521ICRU PMMA521ICRU
+        :stop layer:
+
+        # 170C521ICRU has rho=1.7 g/cm3. PTW specifies graphite rho=1.85 g/cm3.
+        # Scale only the graphite regions by 1.85/1.70 = 1.088235294117647.
+        set relative density = 1 1 1.088235294117647
+        set relative density = 6 6 1.088235294117647
+        set relative density = 9 9 1.088235294117647
+    :stop geometry:
+
+    # 30 x 30 x 30 cm3 water phantom. Chamber reference point is at z=0,
+    # therefore the surface at z=-2 cm places the reference point at 2 cm depth.
+    :start geometry:
+        library = egs_ndgeometry
+        type = EGS_XYZGeometry
+        name = water_phantom
+        x-planes = -15 15
+        y-planes = -15 15
+        z-planes = -2 28
+        :start media input:
+            media = H2O521ICRU
+        :stop media input:
+    :stop geometry:
+
+    :start geometry:
+        library = egs_genvelope
+        name = ptw30013_modelA_in_water
+        base geometry = water_phantom
+        inscribed geometries = ptw30013_modelA
+    :stop geometry:
+
+    simulation geometry = ptw30013_modelA_in_water
+
+:stop geometry definition:
+
+###############################################################################
+# Source
+# Point source at z=-52 cm. Water surface is z=-2 cm => SSD=50 cm.
+# The target rectangle is at the chamber plane z=0. A surface field 8x10 cm2
+# scales by 52/50 to 8.32x10.40 cm2 at this plane.
+###############################################################################
+:start source definition:
+    :start source:
+        name = terad_q120
+        library = egs_collimated_source
+        charge = 0
+        :start source shape:
+            type = point
+            position = 0 0 -52
+        :stop source shape:
+        :start target shape:
+            library = egs_rectangle
+            rectangle = -4.16 -5.20 4.16 5.20
+        :stop target shape:
+        :start spectrum:
+            type = tabulated spectrum
+            spectrum file = $EGS_HOME/egs_chamber/Q120.ensrc
+        :stop spectrum:
+    :stop source:
+    simulation source = terad_q120
+:stop source definition:
+
+###############################################################################
+# Scoring
+# Net air volume from Model A = 0.61508 cm3.
+# AIR521ICRU rho = 1.2048e-3 g/cm3 => mass = 7.41048384e-4 g.
+###############################################################################
+:start scoring options:
+    :start calculation geometry:
+        geometry name = ptw30013_modelA_in_water
+        cavity regions = 1 6 9
+        cavity mass = 7.41048384e-4
+    :stop calculation geometry:
+:stop scoring options:
+
+###############################################################################
+# Low-energy transport settings for the smoke calculation.
+# Final production settings are frozen only after the published benchmark.
+###############################################################################
+:start MC transport parameter:
+    Global ECUT = 0.512
+    Global PCUT = 0.001
+    Global SMAX = 1e10
+    ESTEPE = 0.25
+    XIMAX = 0.5
+    Boundary crossing algorithm = exact
+    Electron-step algorithm = PRESTA-II
+    Skin depth for BCA = 3
+    Spin effects = On
+    Bound Compton scattering = On
+    Rayleigh scattering = On
+    Atomic relaxations = On
+    Photoelectron angular sampling = On
+    Photon cross sections = mcdf-xcom
+:stop MC transport parameter:
+
+:start run control:
+    ncase = 20000
+:stop run control:
