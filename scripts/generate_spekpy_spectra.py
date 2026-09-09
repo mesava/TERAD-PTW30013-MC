@@ -60,8 +60,13 @@ def make_base_spectrum(kvp: float, known_mat: str, known_mm: float):
     return s
 
 
+def clone_spectrum(spek_obj):
+    """Clone using SpekPy's static clone API (Spek.clone(obj))."""
+    return sp.Spek.clone(spek_obj)
+
+
 def hvl_cu_with_extra_al(base, extra_al_mm: float) -> float:
-    s = base.clone()
+    s = clone_spectrum(base)
     if extra_al_mm > 0:
         s.filter("Al", float(extra_al_mm))
     return float(s.get_hvl1(matl="Cu", to="air"))
@@ -176,9 +181,9 @@ def main() -> None:
         print(f"\n=== {beam_id}: {kvp:g} kV, target HVL={target_hvl:g} mm Cu ===")
         base = make_base_spectrum(kvp, known_mat, known_mm)
         initial_hvl = float(base.get_hvl1(matl="Cu", to="air"))
-        extra_al, fitted_hvl = fit_extra_al(base, target_hvl)
+        extra_al, _ = fit_extra_al(base, target_hvl)
 
-        final = base.clone()
+        final = clone_spectrum(base)
         if extra_al > 0:
             final.filter("Al", extra_al)
 
@@ -189,11 +194,11 @@ def main() -> None:
         eeff_cu = float(final.get_eeff(matl="Cu", to="air"))
         rel_err = (hvl1_cu / target_hvl - 1.0)
 
-        print(f"Initial Cu HVL       : {initial_hvl:.6f} mm")
+        print(f"Initial Cu HVL        : {initial_hvl:.6f} mm")
         print(f"Equivalent Al fitted : {extra_al:.6f} mm")
-        print(f"Final Cu HVL         : {hvl1_cu:.6f} mm")
-        print(f"Relative HVL error   : {100.0 * rel_err:+.5f} %")
-        print(f"Mean energy          : {emean:.4f} keV")
+        print(f"Final Cu HVL          : {hvl1_cu:.6f} mm")
+        print(f"Relative HVL error    : {100.0 * rel_err:+.5f} %")
+        print(f"Mean energy           : {emean:.4f} keV")
 
         if abs(rel_err) > HVL_TOL_REL:
             raise RuntimeError(
