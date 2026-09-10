@@ -10,41 +10,69 @@
 # Geometry: source-to-reference-point 100 cm, water surface at -2 cm,
 # chamber reference point at z=0 (2 cm water depth), 20x20x20 cm3 phantom,
 # circular field diameter 10.5 cm at the reference plane.
+#
+# XCSE note:
+# The physical Model A materials/dimensions are unchanged. A 1 cm WATER_1KEV
+# shell is added around the chamber solely as an XCSE variance-reduction region,
+# following the egs_chamber recommendation for in-phantom chamber dose.
 ###############################################################################
 
 :start geometry definition:
 
-    # Public, volume-constrained PTW30013 Model A.
+    # Public, volume-constrained PTW30013 Model A plus a 1 cm water XCSE shell.
+    # Maximum regions per layer = 5. Local region map:
+    #   layer 0:  0                         water XCSE end shell
+    #   layer 1:  5 6 7 8                   air / graphite / PMMA / water
+    #   layer 2: 10 11 12 13 14             Al / air / graphite / PMMA / water
+    #   layer 3: 15 16 17 18                air / graphite / PMMA / water
+    #   layer 4: 20                          water XCSE end shell
+    # Cavity regions therefore remain the three physical air portions: 5,11,15.
     :start geometry:
         library = egs_cones
         type = EGS_ConeStack
-        name = ptw30013_modelA
-        axis = 1.09 0 0  -1 0 0
+        name = ptw30013_modelA_xcse
+        axis = 2.09 0 0  -1 0 0
+
+        # 1 cm water shell before the chamber along its axis.
+        :start layer:
+            thickness = 1.0
+            top radii    = 1.3475
+            bottom radii = 1.3475
+            media = WATER_1KEV
+        :stop layer:
 
         :start layer:
             thickness = 0.03
-            top radii    = 0.305 0.314 0.3475
-            bottom radii = 0.305 0.314 0.3475
-            media = AIR_1KEV GRAPHITE_1KEV PMMA_1KEV
+            top radii    = 0.305 0.314 0.3475 1.3475
+            bottom radii = 0.305 0.314 0.3475 1.3475
+            media = AIR_1KEV GRAPHITE_1KEV PMMA_1KEV WATER_1KEV
         :stop layer:
 
         :start layer:
             thickness = 2.12
-            top radii    = 0.0575 0.305 0.314 0.3475
-            bottom radii = 0.0575 0.305 0.314 0.3475
-            media = AL_1KEV AIR_1KEV GRAPHITE_1KEV PMMA_1KEV
+            top radii    = 0.0575 0.305 0.314 0.3475 1.3475
+            bottom radii = 0.0575 0.305 0.314 0.3475 1.3475
+            media = AL_1KEV AIR_1KEV GRAPHITE_1KEV PMMA_1KEV WATER_1KEV
         :stop layer:
 
         :start layer:
             thickness = 0.03
-            top radii    = 0.305 0.314 0.3475
-            bottom radii = 0.305 0.314 0.3475
-            media = AIR_1KEV GRAPHITE_1KEV PMMA_1KEV
+            top radii    = 0.305 0.314 0.3475 1.3475
+            bottom radii = 0.305 0.314 0.3475 1.3475
+            media = AIR_1KEV GRAPHITE_1KEV PMMA_1KEV WATER_1KEV
         :stop layer:
 
-        # Local ConeStack cavity regions. egs_chamber resolves the label to
-        # global regions after the chamber is inserted in the water phantom.
-        set label = chamber_cavity 0 5 8
+        # 1 cm water shell after the chamber along its axis.
+        :start layer:
+            thickness = 1.0
+            top radii    = 1.3475
+            bottom radii = 1.3475
+            media = WATER_1KEV
+        :stop layer:
+
+        # Local ConeStack labels are resolved to global regions by egs_chamber.
+        set label = chamber_cavity 5 11 15
+        set label = chamber_xcse_zone 0 5 6 7 8 10 11 12 13 14 15 16 17 18 20
     :stop geometry:
 
     # Helper geometry used only by egs_chamber for cavity/range bookkeeping.
@@ -108,7 +136,7 @@
         library = egs_genvelope
         name = chamber_in_water
         base geometry = water_phantom
-        inscribed geometries = ptw30013_modelA
+        inscribed geometries = ptw30013_modelA_xcse
     :stop geometry:
 
     :start geometry:
@@ -191,8 +219,9 @@
 :stop source definition:
 
 ###############################################################################
-# Score Dw and chamber cavity dose with the same histories and request their
-# ratio directly from egs_chamber.
+# Score Dw and chamber cavity dose with the same primary-history count.
+# Dw is deliberately left at enhancement=1. The scanned @@XCSE@@ factor is
+# applied only to the chamber + 1 cm water shell, where it is needed.
 ###############################################################################
 :start scoring options:
     :start calculation geometry:
@@ -201,7 +230,7 @@
         cavity mass = 7.853981633974483e-2
         cavity geometry = water_score_voxel
         enhance regions = -1
-        enhancement = @@XCSE@@
+        enhancement = 1
     :stop calculation geometry:
 
     :start calculation geometry:
@@ -209,7 +238,7 @@
         cavity regions = chamber_cavity
         cavity mass = 7.410453757123e-4
         cavity geometry = ptw30013_cavity_envelope
-        enhance regions = -1
+        enhance regions = chamber_xcse_zone
         enhancement = @@XCSE@@
     :stop calculation geometry:
 
