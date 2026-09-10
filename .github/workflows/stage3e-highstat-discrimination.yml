@@ -1,0 +1,367 @@
+name: Stage 3E benchmark high-stat discrimination
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage3e-highstat-discrimination.yml'
+
+jobs:
+  high-stat:
+    name: ${{ matrix.case }} / ${{ matrix.beam }} / 200M
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - case: legacy_vac
+            beam: CCRI100
+            spectrum: legacy
+            air_mode: vacuum
+            seed1: '211'
+            seed2: '1211'
+          - case: legacy_vac
+            beam: CCRI250
+            spectrum: legacy
+            air_mode: vacuum
+            seed1: '212'
+            seed2: '1212'
+          - case: pubemin_vac
+            beam: CCRI100
+            spectrum: published_emin
+            air_mode: vacuum
+            seed1: '213'
+            seed2: '1213'
+          - case: pubemin_vac
+            beam: CCRI250
+            spectrum: published_emin
+            air_mode: vacuum
+            seed1: '214'
+            seed2: '1214'
+          - case: pubemin_air48
+            beam: CCRI100
+            spectrum: published_emin
+            air_mode: air48
+            seed1: '215'
+            seed2: '1215'
+          - case: pubemin_air48
+            beam: CCRI250
+            spectrum: published_emin
+            air_mode: air48
+            seed1: '216'
+            seed2: '1216'
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '200000000'
+      NBATCH: '20'
+      XCSE: '64'
+      RR: '64'
+      CASE: ${{ matrix.case }}
+      BEAM: ${{ matrix.beam }}
+      SPECTRUM_MODE: ${{ matrix.spectrum }}
+      AIR_MODE: ${{ matrix.air_mode }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate Stage 3D spectrum families
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10'
+          set -o pipefail
+          python scripts/generate_czarnecki_stage3d_spectra.py 2>&1 | tee stage3e_spectra.log
+          test -s "spectra/benchmark_czarnecki2020_stage3d/${SPECTRUM_MODE}/${BEAM}.ensrc"
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage3e_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('Makefile')
+          text = p.read_text()
+          old = 'CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new = ('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+                 '$(EGS_SOURCEDIR)rad_compton1.mortran '
+                 '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile for rad_compton1.mortran')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage3e_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Run Stage 3E high-stat point
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+
+          cp "spectra/benchmark_czarnecki2020_stage3d/${SPECTRUM_MODE}/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
+          mkdir -p stage3e_logs stage3e_inputs
+          name="stage3e_${CASE}_${BEAM}"
+          sed \
+            -e "s/@@BEAM@@/${BEAM}/g" \
+            -e "s/@@XCSE@@/${XCSE}/g" \
+            -e "s/@@RR@@/${RR}/g" \
+            -e "s/@@NCASE@@/${NCASE}/g" \
+            inputs/stage3b_czarnecki_modelA_vrt.template.egsinp > "stage3e_inputs/${name}.egsinp"
+
+          python - "stage3e_inputs/${name}.egsinp" <<'PY'
+          from pathlib import Path
+          import os, sys
+          p = Path(sys.argv[1])
+          text = p.read_text()
+          text = text.replace('nbatch = 10', f"nbatch = {os.environ['NBATCH']}", 1)
+
+          if os.environ['AIR_MODE'] == 'air48':
+              marker = 'name = water_phantom'
+              if marker not in text:
+                  raise SystemExit('water_phantom block not found')
+              head, tail = text.split(marker, 1)
+              if 'z-planes = -2 18' not in tail:
+                  raise SystemExit('Expected water_phantom z planes not found')
+              tail = tail.replace('z-planes = -2 18', 'z-planes = -50 -2 18', 1)
+              old_media = 'media = WATER_1KEV\n        :stop media input:'
+              new_media = 'media = AIR_1KEV WATER_1KEV\n            set medium = 1 1\n        :stop media input:'
+              if old_media not in tail:
+                  raise SystemExit('Expected water_phantom media block not found')
+              tail = tail.replace(old_media, new_media, 1)
+              text = head + marker + tail
+
+          rng = (
+              ':start rng definition:\n'
+              '    type = ranmar\n'
+              f"    initial seeds = {os.environ['SEED1']} {os.environ['SEED2']}\n"
+              ':stop rng definition:\n\n'
+          )
+          marker = ':start run control:'
+          if marker not in text:
+              raise SystemExit('Could not insert RNG definition')
+          text = text.replace(marker, rng + marker, 1)
+          p.write_text(text)
+          PY
+
+          if [ "$AIR_MODE" = "air48" ]; then
+            grep -Fq 'z-planes = -50 -2 18' "stage3e_inputs/${name}.egsinp"
+            grep -Fq 'media = AIR_1KEV WATER_1KEV' "stage3e_inputs/${name}.egsinp"
+            grep -Fq 'set medium = 1 1' "stage3e_inputs/${name}.egsinp"
+          else
+            grep -Fq 'z-planes = -2 18' "stage3e_inputs/${name}.egsinp"
+          fi
+
+          cp "stage3e_inputs/${name}.egsinp" "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3e_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+
+          log="stage3e_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Fq 'else RR with survival probability 0.015625' "$log"
+          grep -Fq "scoring phase-space at cavity of 'phsp_scoring_geometry'" "$log"
+          grep -Eq "initial seeds[[:space:]]*=[[:space:]]*${SEED1}[[:space:]]+${SEED2}" "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+
+          python - "$log" "$XCSE" "$AIR_MODE" <<'PY'
+          from pathlib import Path
+          import re, sys
+          text = Path(sys.argv[1]).read_text(errors='replace')
+          xcse, air_mode = sys.argv[2], sys.argv[3]
+          offset = 2 if air_mode == 'air48' else 1
+
+          def validate(name, local_regions):
+              m = re.search(
+                  rf'\d+\)\s+{re.escape(name)}\s*\n\s*regions\s*:\s*([^\n]*)\n\s*enhancement:\s*([^\n]*)', text,
+              )
+              if not m:
+                  raise SystemExit(f'Missing XCSE block for {name}')
+              regions = [int(v) for v in m.group(1).split()]
+              expected = [v + offset for v in local_regions]
+              factors = m.group(2).split()
+              if regions != expected:
+                  raise SystemExit(f'{name}: regions {regions} != {expected}')
+              if len(factors) != len(expected) or any(v != xcse for v in factors):
+                  raise SystemExit(f'{name}: invalid XCSE factors {factors}')
+
+          validate('dose_to_water', [0,2,3,4])
+          validate('chamber_in_water', [0,5,6,7,8,10,11,12,13,14,15,16,17,18,20])
+          PY
+
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then
+            echo "Fatal Stage 3E diagnostic in ${name}"
+            exit 1
+          fi
+          grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+
+      - name: Summarize Stage 3E point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, os, re
+          case = os.environ['CASE']; beam = os.environ['BEAM']
+          p = Path(f'stage3e_logs/stage3e_{case}_{beam}.log')
+          out = Path(f'stage3e_{case}_{beam}_summary.csv')
+          cols = ['case','beam','spectrum_mode','air_mode','ncase','seed1','seed2','water_dose','water_unc_pct','chamber_dose','chamber_unc_pct','ratio','ratio_unc_abs','ratio_unc_pct','elapsed_s']
+          row = {k: 'NA' for k in cols}
+          row.update(case=case, beam=beam, spectrum_mode=os.environ['SPECTRUM_MODE'], air_mode=os.environ['AIR_MODE'], ncase=os.environ['NCASE'], seed1=os.environ['SEED1'], seed2=os.environ['SEED2'])
+          if p.exists():
+              text = p.read_text(errors='replace')
+              def dose(name):
+                  m = re.findall(rf'^{name}\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s*%', text, re.M)
+                  return m[-1] if m else ('NA','NA')
+              row['water_dose'], row['water_unc_pct'] = dose('dose_to_water')
+              row['chamber_dose'], row['chamber_unc_pct'] = dose('chamber_in_water')
+              m = re.findall(r'^dose_to_water\s+chamber_in_water\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)', text, re.M)
+              if m:
+                  r, ur = map(float, m[-1])
+                  row['ratio'] = f'{r:.8g}'; row['ratio_unc_abs'] = f'{ur:.8g}'; row['ratio_unc_pct'] = f'{100*ur/r:.5f}'
+              me = re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s', text)
+              if me: row['elapsed_s'] = me[-1]
+          with out.open('w', newline='') as f:
+              w = csv.DictWriter(f, fieldnames=cols); w.writeheader(); w.writerow(row)
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 3E point
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage3e-${{ matrix.case }}-${{ matrix.beam }}
+          path: |
+            stage3e_spectra.log
+            stage3e_configure.log
+            stage3e_egs_chamber_build.log
+            stage3e_logs/*.log
+            stage3e_inputs/*.egsinp
+            stage3e_${{ matrix.case }}_${{ matrix.beam }}_summary.csv
+            results/czarnecki_stage3d_spectrum_summary.csv
+            spectra/benchmark_czarnecki2020_stage3d/${{ matrix.spectrum }}/${{ matrix.beam }}.ensrc
+          if-no-files-found: warn
+
+  discrimination-summary:
+    name: Evaluate Stage 3E discrimination
+    needs: high-stat
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Stage 3E point summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage3e-*
+          path: stage3e_downloads
+          merge-multiple: true
+
+      - name: Calculate high-stat comparison
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, math
+
+          rows = {}
+          for p in Path('stage3e_downloads').glob('stage3e_*_summary.csv'):
+              with p.open(newline='') as f:
+                  row = next(csv.DictReader(f))
+              rows[(row['case'], row['beam'])] = row
+
+          cases = ['legacy_vac','pubemin_vac','pubemin_air48']
+          pub = 0.95355
+          stage3c_k = 0.907674
+          stage3c_uk = 0.006748
+          outrows = []
+          for case in cases:
+              a = rows.get((case,'CCRI100')); b = rows.get((case,'CCRI250'))
+              if not a or not b or a['ratio'] == 'NA' or b['ratio'] == 'NA':
+                  raise SystemExit(f'Missing valid Stage 3E point(s) for {case}')
+              r100, u100 = float(a['ratio']), float(a['ratio_unc_abs'])
+              r250, u250 = float(b['ratio']), float(b['ratio_unc_abs'])
+              k = r100/r250
+              ukrel = math.sqrt((u100/r100)**2 + (u250/r250)**2)
+              uk = k*ukrel
+              zpub = (k-pub)/uk
+              z3c = (k-stage3c_k)/math.sqrt(uk**2 + stage3c_uk**2) if case == 'legacy_vac' else float('nan')
+              outrows.append({
+                  'case':case,
+                  'R100':f'{r100:.8f}','uR100_abs':f'{u100:.8f}','uR100_pct':f'{100*u100/r100:.4f}',
+                  'R250':f'{r250:.8f}','uR250_abs':f'{u250:.8f}','uR250_pct':f'{100*u250/r250:.4f}',
+                  'k100_250':f'{k:.8f}','uk_abs':f'{uk:.8f}','uk_pct':f'{100*ukrel:.4f}',
+                  'delta_vs_pub_pct':f'{100*(k/pub-1):+.4f}','z_vs_pub':f'{zpub:+.3f}',
+                  'z_vs_stage3c_legacy':('NA' if math.isnan(z3c) else f'{z3c:+.3f}'),
+              })
+
+          # Direct air effect for the same published-Emin spectrum family.
+          pv = next(r for r in outrows if r['case']=='pubemin_vac')
+          pa = next(r for r in outrows if r['case']=='pubemin_air48')
+          kv, uv = float(pv['k100_250']), float(pv['uk_abs'])
+          ka, ua = float(pa['k100_250']), float(pa['uk_abs'])
+          delta_air = ka-kv
+          u_delta_air = math.sqrt(uv**2 + ua**2)
+          z_air = delta_air/u_delta_air
+
+          fields = list(outrows[0].keys())
+          with open('stage3e_discrimination_summary.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(outrows)
+          with open('stage3e_air_effect.txt','w') as f:
+              f.write(f'pubemin_air48 - pubemin_vac = {delta_air:+.8f}\n')
+              f.write(f'u_delta_independent = {u_delta_air:.8f}\n')
+              f.write(f'z_air_effect = {z_air:+.3f}\n')
+          print(Path('stage3e_discrimination_summary.csv').read_text())
+          print(Path('stage3e_air_effect.txt').read_text())
+          PY
+
+      - name: Upload Stage 3E discrimination summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage3e-discrimination-summary
+          path: |
+            stage3e_discrimination_summary.csv
+            stage3e_air_effect.txt
+          if-no-files-found: error
