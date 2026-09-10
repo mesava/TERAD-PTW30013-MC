@@ -11,11 +11,19 @@ on:
 
 jobs:
   low-energy-correlated-pilot:
+    name: ${{ matrix.beam }} / XCSE ${{ matrix.xcse }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        beam: [CCRI100, CCRI250]
+        xcse: [64, 128, 256, 512]
     env:
       EGSRUN: /tmp/EGSnrc
       NCASE: '5000000'
+      BEAM: ${{ matrix.beam }}
+      XCSE: ${{ matrix.xcse }}
 
     steps:
       - name: Checkout project
@@ -33,8 +41,7 @@ jobs:
           python -m pip install 'spekpy==2.5.4' 'scipy>=1.10'
           set -o pipefail
           python scripts/generate_czarnecki_benchmark_spectra.py 2>&1 | tee stage3_spectra.log
-          test -s spectra/benchmark_czarnecki2020/CCRI100.ensrc
-          test -s spectra/benchmark_czarnecki2020/CCRI250.ensrc
+          test -s "spectra/benchmark_czarnecki2020/${BEAM}.ensrc"
           cat results/czarnecki_spectrum_summary.csv
 
       - name: Install EGSnrc prerequisites
@@ -90,7 +97,7 @@ jobs:
           make 2>&1 | tee "$GITHUB_WORKSPACE/stage3_egs_chamber_build.log"
           test -x "$EGS_HOME/bin/gha/egs_chamber"
 
-      - name: Run low-energy correlated-ratio XCSE pilot
+      - name: Run Stage 3 matrix point
         shell: bash
         run: |
           export EGS_HOME="$EGSRUN/egs_home/"
@@ -98,82 +105,87 @@ jobs:
           export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
           export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
 
-          cp spectra/benchmark_czarnecki2020/CCRI100.ensrc "$EGS_HOME/egs_chamber/CCRI100.ensrc"
-          cp spectra/benchmark_czarnecki2020/CCRI250.ensrc "$EGS_HOME/egs_chamber/CCRI250.ensrc"
+          cp "spectra/benchmark_czarnecki2020/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
 
           mkdir -p stage3_logs
-          for beam in CCRI100 CCRI250; do
-            for x in 64 128 256 512; do
-              name="stage3_${beam}_x${x}"
-              sed \
-                -e "s/@@BEAM@@/${beam}/g" \
-                -e "s/@@XCSE@@/${x}/g" \
-                -e "s/@@NCASE@@/${NCASE}/g" \
-                inputs/stage3_czarnecki_modelA.template.egsinp > "$EGS_HOME/egs_chamber/${name}.egsinp"
+          name="stage3_${BEAM}_x${XCSE}"
+          sed \
+            -e "s/@@BEAM@@/${BEAM}/g" \
+            -e "s/@@XCSE@@/${XCSE}/g" \
+            -e "s/@@NCASE@@/${NCASE}/g" \
+            inputs/stage3_czarnecki_modelA.template.egsinp > "$EGS_HOME/egs_chamber/${name}.egsinp"
 
-              # chamber_xcse_zone expands to 15 regions. egs_chamber requires
-              # one enhancement factor per expanded region; a scalar factor is
-              # not broadcast over a region label.
-              enhancement_list="$(python -c "print(' '.join(['${x}']*15))")"
-              sed -i \
-                "s/^        enhancement = ${x}$/        enhancement = ${enhancement_list}/" \
-                "$EGS_HOME/egs_chamber/${name}.egsinp"
+          # chamber_xcse_zone expands to 15 regions. egs_chamber requires
+          # one enhancement factor per expanded region; a scalar factor is
+          # not broadcast over a region label.
+          enhancement_list="$(python -c "print(' '.join(['${XCSE}']*15))")"
+          sed -i \
+            "s/^        enhancement = ${XCSE}$/        enhancement = ${enhancement_list}/" \
+            "$EGS_HOME/egs_chamber/${name}.egsinp"
 
-              cd "$EGS_HOME/egs_chamber"
-              echo "===== ${name} ====="
-              set -o pipefail
-              "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3_logs/${name}.log"
-              cd "$GITHUB_WORKSPACE"
+          cd "$EGS_HOME/egs_chamber"
+          echo "===== ${name} ====="
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
 
-              log="stage3_logs/${name}.log"
-              grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
-              grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
-              grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
-              grep -Eq 'photon cross-section enhancement[[:space:]]*=[[:space:]]*On' "$log"
-              if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.|missing/wrong .enhance regions.|missing/wrong .enhancement.|number of .enhance regions. must match .enhancement.|Turning radiative Compton corrections OFF' "$log"; then
-                echo "Fatal Stage 3 diagnostic in ${name}"
-                grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong|enhance regions.*must match|radiative Compton' "$log" || true
-                exit 1
-              fi
-              # Verify that the requested factor was actually parsed for all
-              # 15 chamber/XCSE-shell regions, not just that XCSE is globally On.
-              grep -Eq "enhancement:[[:space:]]+${x}([[:space:]]+${x}){14}" "$log"
-              echo "--- dose/ratio tail: ${name} ---"
-              grep -Ei 'cavity dose|dose ratio|ratio|dose_to_water|chamber_in_water|uncertainty' "$log" | tail -n 80 || true
-            done
-          done
+          log="stage3_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Eq 'photon cross-section enhancement[[:space:]]*=[[:space:]]*On' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.|missing/wrong .enhance regions.|missing/wrong .enhancement.|number of .enhance regions. must match .enhancement.|Turning radiative Compton corrections OFF' "$log"; then
+            echo "Fatal Stage 3 diagnostic in ${name}"
+            grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong|enhance regions.*must match|radiative Compton' "$log" || true
+            exit 1
+          fi
 
-      - name: Summarize pilot output
+          # Verify that the requested factor was parsed for all 15
+          # chamber/XCSE-shell regions.
+          grep -Eq "enhancement:[[:space:]]+${XCSE}([[:space:]]+${XCSE}){14}" "$log"
+          echo "--- dose/ratio tail: ${name} ---"
+          grep -Ei 'cavity dose|dose ratio|ratio|dose_to_water|chamber_in_water|uncertainty' "$log" | tail -n 80 || true
+
+      - name: Summarize matrix point
+        if: always()
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
-          print('beam,xcse,water_dose,water_unc_pct,chamber_dose,chamber_unc_pct,ratio_lines')
-          for p in sorted(Path('stage3_logs').glob('stage3_*.log')):
-              text = p.read_text(errors='replace')
-              mname = re.match(r'stage3_(CCRI\d+)_x(\d+)\.log', p.name)
-              beam, x = mname.groups() if mname else ('?', '?')
-              def get(name):
-                  m = re.search(rf'{name}\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s*%', text)
-                  return (m.group(1), m.group(2)) if m else ('NA','NA')
-              wd, wu = get('dose_to_water')
-              cd, cu = get('chamber_in_water')
-              ratio_lines = [ln.strip() for ln in text.splitlines() if 'ratio' in ln.lower()]
-              print(f'{beam},{x},{wd},{wu},{cd},{cu},' + ' | '.join(ratio_lines[-6:]))
+          import os, re
+          beam = os.environ['BEAM']
+          x = os.environ['XCSE']
+          p = Path(f'stage3_logs/stage3_{beam}_x{x}.log')
+          out = Path('stage3_point_summary.csv')
+          header = 'beam,xcse,water_dose,water_unc_pct,chamber_dose,chamber_unc_pct,ratio_lines\n'
+          if not p.exists():
+              out.write_text(header + f'{beam},{x},NA,NA,NA,NA,log_missing\n')
+              print(out.read_text())
+              raise SystemExit(0)
+          text = p.read_text(errors='replace')
+          def get(name):
+              m = re.search(rf'{name}\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s*%', text)
+              return (m.group(1), m.group(2)) if m else ('NA','NA')
+          wd, wu = get('dose_to_water')
+          cd, cu = get('chamber_in_water')
+          ratio_lines = [ln.strip() for ln in text.splitlines() if 'ratio' in ln.lower()]
+          row = f'{beam},{x},{wd},{wu},{cd},{cu},' + ' | '.join(ratio_lines[-6:]) + '\n'
+          out.write_text(header + row)
+          print(out.read_text())
           PY
 
-      - name: Upload Stage 3 pilot diagnostics
+      - name: Upload Stage 3 matrix diagnostics
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stage3-benchmark-pilot
+          name: stage3-${{ matrix.beam }}-x${{ matrix.xcse }}
           path: |
             stage3_spectra.log
             stage3_configure.log
             stage3_egs_chamber_build.log
             stage3_logs/*.log
+            stage3_point_summary.csv
             results/czarnecki_spectrum_summary.csv
-            spectra/benchmark_czarnecki2020/*.ensrc
-            spectra/benchmark_czarnecki2020/*.csv
+            spectra/benchmark_czarnecki2020/${{ matrix.beam }}.ensrc
+            spectra/benchmark_czarnecki2020/${{ matrix.beam }}.csv
           if-no-files-found: warn
