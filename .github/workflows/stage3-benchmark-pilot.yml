@@ -1,0 +1,149 @@
+name: Stage 3 benchmark pilot
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage3-benchmark-pilot.yml'
+      - 'data/czarnecki2020_benchmark.csv'
+      - 'scripts/generate_czarnecki_benchmark_spectra.py'
+      - 'inputs/stage3_czarnecki_modelA.template.egsinp'
+
+jobs:
+  low-energy-correlated-pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '5000000'
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python and benchmark spectra
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate Czarnecki HVL-matched surrogate spectra
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10'
+          set -o pipefail
+          python scripts/generate_czarnecki_benchmark_spectra.py 2>&1 | tee stage3_spectra.log
+          test -s spectra/benchmark_czarnecki2020/CCRI100.ensrc
+          test -s spectra/benchmark_czarnecki2020/CCRI250.ensrc
+          cat results/czarnecki_spectrum_summary.csv
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage3_configure.log"
+
+      - name: Build egs_chamber
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage3_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Run low-energy correlated-ratio XCSE pilot
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+
+          cp spectra/benchmark_czarnecki2020/CCRI100.ensrc "$EGS_HOME/egs_chamber/CCRI100.ensrc"
+          cp spectra/benchmark_czarnecki2020/CCRI250.ensrc "$EGS_HOME/egs_chamber/CCRI250.ensrc"
+
+          mkdir -p stage3_logs
+          for beam in CCRI100 CCRI250; do
+            for x in 64 128 256 512; do
+              name="stage3_${beam}_x${x}"
+              sed \
+                -e "s/@@BEAM@@/${beam}/g" \
+                -e "s/@@XCSE@@/${x}/g" \
+                -e "s/@@NCASE@@/${NCASE}/g" \
+                inputs/stage3_czarnecki_modelA.template.egsinp > "$EGS_HOME/egs_chamber/${name}.egsinp"
+
+              cd "$EGS_HOME/egs_chamber"
+              echo "===== ${name} ====="
+              set -o pipefail
+              "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3_logs/${name}.log"
+              cd "$GITHUB_WORKSPACE"
+
+              log="stage3_logs/${name}.log"
+              grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+              grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+              grep -Eq 'photon cross-section enhancement[[:space:]]*=[[:space:]]*On' "$log"
+              if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.|missing/wrong .enhance regions.|missing/wrong .enhancement.' "$log"; then
+                echo "Fatal Stage 3 diagnostic in ${name}"
+                grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong' "$log" || true
+                exit 1
+              fi
+              echo "--- dose/ratio tail: ${name} ---"
+              grep -Ei 'cavity dose|dose ratio|ratio|dose_to_water|chamber_in_water|uncertainty' "$log" | tail -n 80 || true
+            done
+          done
+
+      - name: Summarize pilot output
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          print('beam,xcse,water_dose,water_unc_pct,chamber_dose,chamber_unc_pct,ratio_lines')
+          for p in sorted(Path('stage3_logs').glob('stage3_*.log')):
+              text = p.read_text(errors='replace')
+              mname = re.match(r'stage3_(CCRI\d+)_x(\d+)\.log', p.name)
+              beam, x = mname.groups() if mname else ('?', '?')
+              def get(name):
+                  m = re.search(rf'{name}\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s*%', text)
+                  return (m.group(1), m.group(2)) if m else ('NA','NA')
+              wd, wu = get('dose_to_water')
+              cd, cu = get('chamber_in_water')
+              ratio_lines = [ln.strip() for ln in text.splitlines() if 'ratio' in ln.lower()]
+              print(f'{beam},{x},{wd},{wu},{cd},{cu},' + ' | '.join(ratio_lines[-6:]))
+          PY
+
+      - name: Upload Stage 3 pilot diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage3-benchmark-pilot
+          path: |
+            stage3_spectra.log
+            stage3_configure.log
+            stage3_egs_chamber_build.log
+            stage3_logs/*.log
+            results/czarnecki_spectrum_summary.csv
+            spectra/benchmark_czarnecki2020/*.ensrc
+            spectra/benchmark_czarnecki2020/*.csv
+          if-no-files-found: warn
