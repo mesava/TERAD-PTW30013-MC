@@ -111,6 +111,14 @@ jobs:
                 -e "s/@@NCASE@@/${NCASE}/g" \
                 inputs/stage3_czarnecki_modelA.template.egsinp > "$EGS_HOME/egs_chamber/${name}.egsinp"
 
+              # chamber_xcse_zone expands to 15 regions. egs_chamber requires
+              # one enhancement factor per expanded region; a scalar factor is
+              # not broadcast over a region label.
+              enhancement_list="$(python -c "print(' '.join(['${x}']*15))")"
+              sed -i \
+                "s/^        enhancement = ${x}$/        enhancement = ${enhancement_list}/" \
+                "$EGS_HOME/egs_chamber/${name}.egsinp"
+
               cd "$EGS_HOME/egs_chamber"
               echo "===== ${name} ====="
               set -o pipefail
@@ -127,6 +135,9 @@ jobs:
                 grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong|enhance regions.*must match|radiative Compton' "$log" || true
                 exit 1
               fi
+              # Verify that the requested factor was actually parsed for all
+              # 15 chamber/XCSE-shell regions, not just that XCSE is globally On.
+              grep -Eq "enhancement:[[:space:]]+${x}([[:space:]]+${x}){14}" "$log"
               echo "--- dose/ratio tail: ${name} ---"
               grep -Ei 'cavity dose|dose ratio|ratio|dose_to_water|chamber_in_water|uncertainty' "$log" | tail -n 80 || true
             done
