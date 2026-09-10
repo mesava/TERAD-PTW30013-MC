@@ -47,6 +47,26 @@
         set label = chamber_cavity 0 5 8
     :stop geometry:
 
+    # Helper geometry used only by egs_chamber for cavity/range bookkeeping.
+    # It is not part of the simulation geometry and does not modify Model A.
+    :start geometry:
+        library = egs_cylinders
+        type = EGS_XCylinders
+        radii = 0.305
+        name = ptw30013_cavity_cyl
+    :stop geometry:
+    :start geometry:
+        library = egs_planes
+        type = EGS_Xplanes
+        positions = -1.09 1.09
+        name = ptw30013_cavity_planes
+    :stop geometry:
+    :start geometry:
+        library = egs_ndgeometry
+        name = ptw30013_cavity_envelope
+        dimensions = ptw30013_cavity_planes ptw30013_cavity_cyl
+    :stop geometry:
+
     # Small chamber-free water scoring voxel used by Czarnecki et al.:
     # radius 1 cm, height 0.025 cm, centred on the reference point.
     :start geometry:
@@ -179,6 +199,7 @@
         geometry name = dose_to_water
         cavity regions = water_score
         cavity mass = 7.853981633974483e-2
+        cavity geometry = water_score_voxel
         enhance regions = -1
         enhancement = @@XCSE@@
     :stop calculation geometry:
@@ -187,6 +208,7 @@
         geometry name = chamber_in_water
         cavity regions = chamber_cavity
         cavity mass = 7.410453757123e-4
+        cavity geometry = ptw30013_cavity_envelope
         enhance regions = -1
         enhancement = @@XCSE@@
     :stop calculation geometry:
