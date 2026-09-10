@@ -239,7 +239,11 @@
         cavity mass = 7.410453757123e-4
         cavity geometry = ptw30013_cavity_envelope
         enhance regions = chamber_xcse_zone
-        enhancement = @@XCSE@@
+        # chamber_xcse_zone expands to 15 regions. egs_chamber requires one
+        # enhancement entry per resolved region; a single scalar is rejected.
+        enhancement = @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \
+                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \
+                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@
     :stop calculation geometry:
 
     # R_Q = Dw / Ddet,w for this beam quality.
