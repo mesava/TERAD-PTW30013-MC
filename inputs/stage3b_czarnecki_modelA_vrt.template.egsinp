@@ -1,0 +1,350 @@
+###############################################################################
+# Stage 3B benchmark/VRT template: PTW30013 public Model A
+# Czarnecki et al. 2020 medium-kV reference geometry.
+#
+# Stage 3B changes relative to Stage 3A:
+#   1) fixed published EGSnrc XCSE factor = @@XCSE@@ (64 in CI),
+#   2) local XCSE is applied to BOTH the chamber target and Dw target,
+#   3) Russian Roulette range rejection uses survival 1/@@RR@@,
+#      ESAVE = 0.512 MeV,
+#   4) egs_chamber temporary phase-space storage (TmpPhsp/IPSS) is enabled.
+#
+# Tokens replaced by CI:
+#   @@BEAM@@   -> CCRI100 / CCRI250 (later CCRI135 / CCRI180)
+#   @@XCSE@@   -> photon cross-section enhancement factor
+#   @@RR@@     -> Russian Roulette rejection factor
+#   @@NCASE@@  -> number of primary histories
+#
+# Physical reference geometry is unchanged:
+# source-to-reference-point 100 cm, water surface z=-2 cm, reference point z=0,
+# 20x20x20 cm3 water phantom, circular 10.5 cm diameter field at z=0.
+###############################################################################
+
+:start geometry definition:
+
+    ###########################################################################
+    # PTW 30013 Model A + 1 cm water XCSE shell (variance reduction only).
+    ###########################################################################
+    :start geometry:
+        library = egs_cones
+        type = EGS_ConeStack
+        name = ptw30013_modelA_xcse
+        axis = 2.09 0 0  -1 0 0
+
+        :start layer:
+            thickness = 1.0
+            top radii    = 1.3475
+            bottom radii = 1.3475
+            media = WATER_1KEV
+        :stop layer:
+
+        :start layer:
+            thickness = 0.03
+            top radii    = 0.305 0.314 0.3475 1.3475
+            bottom radii = 0.305 0.314 0.3475 1.3475
+            media = AIR_1KEV GRAPHITE_1KEV PMMA_1KEV WATER_1KEV
+        :stop layer:
+
+        :start layer:
+            thickness = 2.12
+            top radii    = 0.0575 0.305 0.314 0.3475 1.3475
+            bottom radii = 0.0575 0.305 0.314 0.3475 1.3475
+            media = AL_1KEV AIR_1KEV GRAPHITE_1KEV PMMA_1KEV WATER_1KEV
+        :stop layer:
+
+        :start layer:
+            thickness = 0.03
+            top radii    = 0.305 0.314 0.3475 1.3475
+            bottom radii = 0.305 0.314 0.3475 1.3475
+            media = AIR_1KEV GRAPHITE_1KEV PMMA_1KEV WATER_1KEV
+        :stop layer:
+
+        :start layer:
+            thickness = 1.0
+            top radii    = 1.3475
+            bottom radii = 1.3475
+            media = WATER_1KEV
+        :stop layer:
+
+        set label = chamber_cavity 5 11 15
+        set label = chamber_xcse_zone 0 5 6 7 8 10 11 12 13 14 15 16 17 18 20
+    :stop geometry:
+
+    # Exact cavity-envelope helper for egs_chamber bookkeeping.
+    :start geometry:
+        library = egs_cylinders
+        type = EGS_XCylinders
+        radii = 0.305
+        name = ptw30013_cavity_cyl
+    :stop geometry:
+    :start geometry:
+        library = egs_planes
+        type = EGS_Xplanes
+        positions = -1.09 1.09
+        name = ptw30013_cavity_planes
+    :stop geometry:
+    :start geometry:
+        library = egs_ndgeometry
+        name = ptw30013_cavity_envelope
+        dimensions = ptw30013_cavity_planes ptw30013_cavity_cyl
+    :stop geometry:
+
+    ###########################################################################
+    # Dw scoring target: Czarnecki cylinder r=1 cm, h=0.025 cm, unchanged.
+    # A water-only 1 cm end shell and 1 cm radial shell are added solely as
+    # the local XCSE interaction zone. Maximum regions/layer = 2:
+    # layer 0 -> 0; layer 1 -> 2(inner score),3(shell); layer 2 -> 4.
+    ###########################################################################
+    :start geometry:
+        library = egs_cones
+        type = EGS_ConeStack
+        name = water_score_xcse
+        axis = 0 0 -1.0125  0 0 1
+
+        :start layer:
+            thickness = 1.0
+            top radii = 2.0
+            bottom radii = 2.0
+            media = WATER_1KEV
+        :stop layer:
+
+        :start layer:
+            thickness = 0.025
+            top radii = 1.0 2.0
+            bottom radii = 1.0 2.0
+            media = WATER_1KEV WATER_1KEV
+        :stop layer:
+
+        :start layer:
+            thickness = 1.0
+            top radii = 2.0
+            bottom radii = 2.0
+            media = WATER_1KEV
+        :stop layer:
+
+        set label = water_score 2
+        set label = water_xcse_zone 0 2 3 4
+    :stop geometry:
+
+    # Original Dw voxel as a helper cavity geometry (not part of transport).
+    :start geometry:
+        library = egs_planes
+        type = EGS_Zplanes
+        positions = -0.0125 0.0125
+        name = water_score_planes
+    :stop geometry:
+    :start geometry:
+        library = egs_cylinders
+        type = EGS_ZCylinders
+        radii = 1.0
+        name = water_score_cyl
+    :stop geometry:
+    :start geometry:
+        library = egs_ndgeometry
+        name = water_score_voxel
+        dimensions = water_score_planes water_score_cyl
+    :stop geometry:
+
+    ###########################################################################
+    # Temporary phase-space/IPSS entry box. It encloses both local XCSE zones
+    # while staying wholly inside the water phantom (surface is z=-2 cm).
+    # In the first calculation geometry, particles entering this box are stored
+    # and replayed through dose_to_water and chamber_in_water.
+    ###########################################################################
+    :start geometry:
+        library = egs_ndgeometry
+        type = EGS_XYZGeometry
+        name = phsp_box
+        x-planes = -2.2 2.2
+        y-planes = -2.1 2.1
+        z-planes = -1.5 1.5
+        :start media input:
+            media = WATER_1KEV
+        :stop media input:
+        set label = phsp_region 0
+    :stop geometry:
+
+    # Reference water phantom: 20x20x20 cm3, surface at z=-2 cm.
+    :start geometry:
+        library = egs_ndgeometry
+        type = EGS_XYZGeometry
+        name = water_phantom
+        x-planes = -10 10
+        y-planes = -10 10
+        z-planes = -2 18
+        :start media input:
+            media = WATER_1KEV
+        :stop media input:
+    :stop geometry:
+
+    :start geometry:
+        library = egs_genvelope
+        name = phsp_scoring_geometry
+        base geometry = water_phantom
+        inscribed geometries = phsp_box
+    :stop geometry:
+
+    :start geometry:
+        library = egs_genvelope
+        name = chamber_in_water
+        base geometry = water_phantom
+        inscribed geometries = ptw30013_modelA_xcse
+    :stop geometry:
+
+    :start geometry:
+        library = egs_genvelope
+        name = dose_to_water
+        base geometry = water_phantom
+        inscribed geometries = water_score_xcse
+    :stop geometry:
+
+    # TmpPhsp requires transport to start in the phase-space scoring geometry.
+    simulation geometry = phsp_scoring_geometry
+:stop geometry definition:
+
+###############################################################################
+# Pegsless low-energy media: Czarnecki transport thresholds.
+###############################################################################
+:start media definition:
+    ae = 0.512
+    ap = 0.001
+    ue = 0.811
+    up = 0.300
+
+    :start AIR_1KEV:
+        elements = C, N, O, Ar
+        mass fractions = 0.000124, 0.7552, 0.2318, 0.01283
+        bulk density = 1.2048e-3
+        bremsstrahlung correction = NRC
+    :stop AIR_1KEV:
+
+    :start GRAPHITE_1KEV:
+        elements = C
+        number of atoms = 1
+        bulk density = 1.85
+        bremsstrahlung correction = NRC
+    :stop GRAPHITE_1KEV:
+
+    :start PMMA_1KEV:
+        elements = C, H, O
+        number of atoms = 5, 8, 2
+        bulk density = 1.19
+        bremsstrahlung correction = NRC
+    :stop PMMA_1KEV:
+
+    :start AL_1KEV:
+        elements = Al
+        number of atoms = 1
+        bulk density = 2.702
+        bremsstrahlung correction = NRC
+    :stop AL_1KEV:
+
+    :start WATER_1KEV:
+        density correction file = water_icru90
+        bremsstrahlung correction = NRC
+    :stop WATER_1KEV:
+:stop media definition:
+
+###############################################################################
+# Isotropic point source, circular field diameter 10.5 cm at z=0.
+###############################################################################
+:start source definition:
+    :start source:
+        name = benchmark_source
+        library = egs_collimated_source
+        charge = 0
+        :start source shape:
+            type = point
+            position = 0 0 -100
+        :stop source shape:
+        :start target shape:
+            library = egs_circle
+            radius = 5.25
+        :stop target shape:
+        :start spectrum:
+            type = tabulated spectrum
+            spectrum file = $EGS_HOME/egs_chamber/@@BEAM@@.ensrc
+        :stop spectrum:
+    :stop source:
+    simulation source = benchmark_source
+:stop source definition:
+
+###############################################################################
+# Scoring and correlated ratio R_Q = Dw / Ddet,w.
+###############################################################################
+:start scoring options:
+    # First geometry is used by TmpPhsp/IPSS to capture particles entering the
+    # common local target envelope. Its dose is not a physical result.
+    :start calculation geometry:
+        geometry name = phsp_scoring_geometry
+        cavity regions = phsp_region
+        cavity mass = 1.0
+        cavity geometry = phsp_box
+        enhance regions = -1
+        enhancement = 1
+    :stop calculation geometry:
+
+    :start calculation geometry:
+        geometry name = dose_to_water
+        cavity regions = water_score
+        cavity mass = 7.853981633974483e-2
+        cavity geometry = water_score_voxel
+        enhance regions = water_xcse_zone
+        enhancement = @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@
+    :stop calculation geometry:
+
+    :start calculation geometry:
+        geometry name = chamber_in_water
+        cavity regions = chamber_cavity
+        cavity mass = 7.410453757123e-4
+        cavity geometry = ptw30013_cavity_envelope
+        enhance regions = chamber_xcse_zone
+        enhancement = @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \
+                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \
+                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@
+    :stop calculation geometry:
+
+    correlated geometries = dose_to_water chamber_in_water
+:stop scoring options:
+
+###############################################################################
+# Czarnecki/Wulff variance-reduction architecture.
+###############################################################################
+:start variance reduction:
+    cs enhancement = 1
+    TmpPhsp = 1
+    :start range rejection:
+        rejection = @@RR@@
+        Esave = 0.512
+        cavity geometry = phsp_box
+        rejection range medium = WATER_1KEV
+    :stop range rejection:
+:stop variance reduction:
+
+###############################################################################
+# EGSnrc transport settings from Czarnecki et al. 2020, Table 3.
+###############################################################################
+:start MC transport parameter:
+    Global PCUT = 0.001
+    Global ECUT = 0.512
+    Photon cross sections = mcdf-xcom
+    Rayleigh scattering = On
+    Photoelectron angular sampling = On
+    Atomic relaxations = On
+    Bound Compton scattering = On
+    Radiative Compton corrections = On
+    Brems cross sections = NIST
+    Brems angular sampling = KM
+    Spin effects = On
+    Electron Impact Ionization = ik
+    ESTEPE = 0.25
+    XIMAX = 0.5
+    Boundary crossing algorithm = exact
+    Skin depth for BCA = 3
+    Electron-step algorithm = EGSnrc
+:stop MC transport parameter:
+
+:start run control:
+    ncase = @@NCASE@@
+    nbatch = 10
+:stop run control:
