@@ -117,16 +117,68 @@ jobs:
           grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
           grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
           grep -Eq 'photon cross-section enhancement[[:space:]]*=[[:space:]]*On' "$log"
-          grep -Eqi 'phase.?space|TmpPhsp|phase space' "$log"
-          grep -Eqi 'Russian|Roulette|range rejection|survival probability' "$log"
-          if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong|Turning radiative Compton corrections OFF' "$log"; then
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Fq 'else RR with survival probability 0.015625' "$log"
+          grep -Fq "scoring phase-space at cavity of 'phsp_scoring_geometry'" "$log"
+          grep -Fq '1) phsp_scoring_geometry -> phsp_box' "$log"
+          grep -Fq '2) dose_to_water -> water_score_voxel' "$log"
+          grep -Fq '3) chamber_in_water -> ptw30013_cavity_envelope' "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+
+          python - "$log" "$XCSE" <<'PY'
+          from pathlib import Path
+          import re, sys
+
+          log_path = Path(sys.argv[1])
+          xcse = sys.argv[2]
+          text = log_path.read_text(errors='replace')
+
+          allowed_missing = {
+              "initScoring: missing/wrong 'sub geometries'  for geometry 'phsp_scoring_geometry'",
+              "initScoring: missing/wrong 'sub geometries'  for geometry 'dose_to_water'",
+              "initScoring: missing/wrong 'sub geometries'  for geometry 'chamber_in_water'",
+          }
+          unexpected = [
+              line.strip() for line in text.splitlines()
+              if 'missing/wrong' in line and line.strip() not in allowed_missing
+          ]
+          if unexpected:
+              raise SystemExit('Unexpected missing/wrong diagnostic(s): ' + ' | '.join(unexpected))
+
+          if allowed_missing.issubset({line.strip() for line in text.splitlines()}):
+              print("Accepted egs_chamber optional 'sub geometries' warnings; required VRT mappings are validated explicitly.")
+
+          def validate_xcse_block(name, expected_regions):
+              match = re.search(
+                  rf'\d+\)\s+{re.escape(name)}\s*\n\s*regions\s*:\s*([^\n]*)\n\s*enhancement:\s*([^\n]*)',
+                  text,
+              )
+              if not match:
+                  raise SystemExit(f'Missing XCSE diagnostic block for {name}')
+              regions = [int(v) for v in match.group(1).split()]
+              factors = match.group(2).split()
+              if regions != expected_regions:
+                  raise SystemExit(f'{name}: XCSE regions {regions} != expected {expected_regions}')
+              if len(factors) != len(expected_regions):
+                  raise SystemExit(f'{name}: {len(factors)} XCSE factors for {len(expected_regions)} regions')
+              if any(v != xcse for v in factors):
+                  raise SystemExit(f'{name}: XCSE factors {factors} do not all equal {xcse}')
+              print(f'{name}: validated {len(regions)} XCSE regions, all factor={xcse}')
+
+          validate_xcse_block('dose_to_water', [1, 3, 4, 5])
+          validate_xcse_block('chamber_in_water', [1, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21])
+          PY
+
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then
             echo "Fatal Stage 3B diagnostic in ${name}"
-            grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong|radiative Compton' "$log" || true
+            grep -Ein 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF|radiative Compton' "$log" || true
             exit 1
           fi
+
           grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
           echo "--- VRT/dose/ratio tail: ${name} ---"
-          grep -Ei 'phase.?space|Russian|Roulette|range rejection|survival|enhancement|cavity dose|dose ratio|dose_to_water|chamber_in_water|uncertainty' "$log" | tail -n 120 || true
+          grep -Ei 'phase.?space|Russian|Roulette|range rejection|survival|enhancement|cavity dose|dose ratio|dose_to_water|chamber_in_water|uncertainty|sub geometries' "$log" | tail -n 120 || true
 
       - name: Summarize Stage 3B matrix point
         if: always()
