@@ -1,0 +1,228 @@
+###############################################################################
+# Stage 3 pilot/benchmark template: PTW30013 public Model A
+# Czarnecki et al. 2020 medium-kV reference geometry.
+#
+# Tokens replaced by CI:
+#   @@BEAM@@   -> CCRI100 / CCRI135 / CCRI180 / CCRI250
+#   @@XCSE@@   -> photon cross-section enhancement factor
+#   @@NCASE@@  -> number of histories
+#
+# Geometry: source-to-reference-point 100 cm, water surface at -2 cm,
+# chamber reference point at z=0 (2 cm water depth), 20x20x20 cm3 phantom,
+# circular field diameter 10.5 cm at the reference plane.
+###############################################################################
+
+:start geometry definition:
+
+    # Public, volume-constrained PTW30013 Model A.
+    :start geometry:
+        library = egs_cones
+        type = EGS_ConeStack
+        name = ptw30013_modelA
+        axis = 1.09 0 0  -1 0 0
+
+        :start layer:
+            thickness = 0.03
+            top radii    = 0.305 0.314 0.3475
+            bottom radii = 0.305 0.314 0.3475
+            media = AIR_1KEV GRAPHITE_1KEV PMMA_1KEV
+        :stop layer:
+
+        :start layer:
+            thickness = 2.12
+            top radii    = 0.0575 0.305 0.314 0.3475
+            bottom radii = 0.0575 0.305 0.314 0.3475
+            media = AL_1KEV AIR_1KEV GRAPHITE_1KEV PMMA_1KEV
+        :stop layer:
+
+        :start layer:
+            thickness = 0.03
+            top radii    = 0.305 0.314 0.3475
+            bottom radii = 0.305 0.314 0.3475
+            media = AIR_1KEV GRAPHITE_1KEV PMMA_1KEV
+        :stop layer:
+
+        # Local ConeStack cavity regions. egs_chamber resolves the label to
+        # global regions after the chamber is inserted in the water phantom.
+        set label = chamber_cavity 0 5 8
+    :stop geometry:
+
+    # Small chamber-free water scoring voxel used by Czarnecki et al.:
+    # radius 1 cm, height 0.025 cm, centred on the reference point.
+    :start geometry:
+        library = egs_planes
+        type = EGS_Zplanes
+        positions = -0.0125 0.0125
+        name = water_score_planes
+    :stop geometry:
+    :start geometry:
+        library = egs_cylinders
+        type = EGS_ZCylinders
+        radii = 1.0
+        name = water_score_cyl
+    :stop geometry:
+    :start geometry:
+        library = egs_ndgeometry
+        name = water_score_voxel
+        dimensions = water_score_planes water_score_cyl
+        :start media input:
+            media = WATER_1KEV
+        :stop media input:
+        set label = water_score 0
+    :stop geometry:
+
+    # Czarnecki reference water phantom: 20x20x20 cm3, surface at z=-2 cm.
+    :start geometry:
+        library = egs_ndgeometry
+        type = EGS_XYZGeometry
+        name = water_phantom
+        x-planes = -10 10
+        y-planes = -10 10
+        z-planes = -2 18
+        :start media input:
+            media = WATER_1KEV
+        :stop media input:
+    :stop geometry:
+
+    :start geometry:
+        library = egs_genvelope
+        name = chamber_in_water
+        base geometry = water_phantom
+        inscribed geometries = ptw30013_modelA
+    :stop geometry:
+
+    :start geometry:
+        library = egs_genvelope
+        name = dose_to_water
+        base geometry = water_phantom
+        inscribed geometries = water_score_voxel
+    :stop geometry:
+
+    simulation geometry = chamber_in_water
+:stop geometry definition:
+
+###############################################################################
+# Pegsless low-energy media. This permits the actual Czarnecki transport
+# thresholds AE/ECUT=0.512 MeV and AP/PCUT=0.001 MeV instead of the stock
+# 521icru limits (0.521 and 0.010 MeV).
+###############################################################################
+:start media definition:
+    ae = 0.512
+    ap = 0.001
+    ue = 0.811
+    up = 0.300
+
+    :start AIR_1KEV:
+        elements = C, N, O, Ar
+        mass fractions = 0.000124, 0.7552, 0.2318, 0.01283
+        bulk density = 1.2048e-3
+        bremsstrahlung correction = NRC
+    :stop AIR_1KEV:
+
+    :start GRAPHITE_1KEV:
+        elements = C
+        number of atoms = 1
+        bulk density = 1.85
+        bremsstrahlung correction = NRC
+    :stop GRAPHITE_1KEV:
+
+    :start PMMA_1KEV:
+        elements = C, H, O
+        number of atoms = 5, 8, 2
+        bulk density = 1.19
+        bremsstrahlung correction = NRC
+    :stop PMMA_1KEV:
+
+    :start AL_1KEV:
+        elements = Al
+        number of atoms = 1
+        bulk density = 2.702
+        bremsstrahlung correction = NRC
+    :stop AL_1KEV:
+
+    :start WATER_1KEV:
+        density correction file = water_icru90
+        bremsstrahlung correction = NRC
+    :stop WATER_1KEV:
+:stop media definition:
+
+###############################################################################
+# Isotropic point source limited to a circular 10.5 cm diameter field at z=0.
+###############################################################################
+:start source definition:
+    :start source:
+        name = benchmark_source
+        library = egs_collimated_source
+        charge = 0
+        :start source shape:
+            type = point
+            position = 0 0 -100
+        :stop source shape:
+        :start target shape:
+            library = egs_circle
+            radius = 5.25
+        :stop target shape:
+        :start spectrum:
+            type = tabulated spectrum
+            spectrum file = $EGS_HOME/egs_chamber/@@BEAM@@.ensrc
+        :stop spectrum:
+    :stop source:
+    simulation source = benchmark_source
+:stop source definition:
+
+###############################################################################
+# Score Dw and chamber cavity dose with the same histories and request their
+# ratio directly from egs_chamber.
+###############################################################################
+:start scoring options:
+    :start calculation geometry:
+        geometry name = dose_to_water
+        cavity regions = water_score
+        cavity mass = 7.853981633974483e-2
+        enhance regions = -1
+        enhancement = @@XCSE@@
+    :stop calculation geometry:
+
+    :start calculation geometry:
+        geometry name = chamber_in_water
+        cavity regions = chamber_cavity
+        cavity mass = 7.410453757123e-4
+        enhance regions = -1
+        enhancement = @@XCSE@@
+    :stop calculation geometry:
+
+    # R_Q = Dw / Ddet,w for this beam quality.
+    correlated geometries = dose_to_water chamber_in_water
+:stop scoring options:
+
+:start variance reduction:
+    cs enhancement = 1
+:stop variance reduction:
+
+###############################################################################
+# EGSnrc transport settings from Czarnecki et al. 2020, Table 3.
+###############################################################################
+:start MC transport parameter:
+    Global PCUT = 0.001
+    Global ECUT = 0.512
+    Photon cross sections = mcdf-xcom
+    Rayleigh scattering = On
+    Photoelectron angular sampling = On
+    Atomic relaxations = On
+    Bound Compton scattering = On
+    Radiative Compton corrections = On
+    Brems cross sections = NIST
+    Brems angular sampling = KM
+    Spin effects = On
+    Electron Impact Ionization = ik
+    ESTEPE = 0.25
+    XIMAX = 0.5
+    Boundary crossing algorithm = exact
+    Skin depth for BCA = 3
+    Electron-step algorithm = EGSnrc
+:stop MC transport parameter:
+
+:start run control:
+    ncase = @@NCASE@@
+    nbatch = 10
+:stop run control:
