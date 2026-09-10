@@ -1,0 +1,177 @@
+name: Stage 3B benchmark VRT pilot
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage3b-benchmark-vrt-pilot.yml'
+      - 'inputs/stage3b_czarnecki_modelA_vrt.template.egsinp'
+      - 'data/czarnecki2020_benchmark.csv'
+      - 'scripts/generate_czarnecki_benchmark_spectra.py'
+
+jobs:
+  vrt-pilot:
+    name: ${{ matrix.beam }} / XCSE64 RR64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        beam: [CCRI100, CCRI250]
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '5000000'
+      BEAM: ${{ matrix.beam }}
+      XCSE: '64'
+      RR: '64'
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate Czarnecki HVL-matched spectra
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10'
+          set -o pipefail
+          python scripts/generate_czarnecki_benchmark_spectra.py 2>&1 | tee stage3b_spectra.log
+          test -s "spectra/benchmark_czarnecki2020/${BEAM}.ensrc"
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage3b_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('Makefile')
+          text = p.read_text()
+          old = 'CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new = ('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+                 '$(EGS_SOURCEDIR)rad_compton1.mortran '
+                 '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile for rad_compton1.mortran')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage3b_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Run Stage 3B VRT matrix point
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cp "spectra/benchmark_czarnecki2020/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
+          mkdir -p stage3b_logs
+          name="stage3b_${BEAM}_x${XCSE}_rr${RR}"
+          sed \
+            -e "s/@@BEAM@@/${BEAM}/g" \
+            -e "s/@@XCSE@@/${XCSE}/g" \
+            -e "s/@@RR@@/${RR}/g" \
+            -e "s/@@NCASE@@/${NCASE}/g" \
+            inputs/stage3b_czarnecki_modelA_vrt.template.egsinp > "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          echo "===== ${name} ====="
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3b_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+
+          log="stage3b_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Eq 'photon cross-section enhancement[[:space:]]*=[[:space:]]*On' "$log"
+          grep -Eqi 'phase.?space|TmpPhsp|phase space' "$log"
+          grep -Eqi 'Russian|Roulette|range rejection|survival probability' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong|Turning radiative Compton corrections OFF' "$log"; then
+            echo "Fatal Stage 3B diagnostic in ${name}"
+            grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong|radiative Compton' "$log" || true
+            exit 1
+          fi
+          grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+          echo "--- VRT/dose/ratio tail: ${name} ---"
+          grep -Ei 'phase.?space|Russian|Roulette|range rejection|survival|enhancement|cavity dose|dose ratio|dose_to_water|chamber_in_water|uncertainty' "$log" | tail -n 120 || true
+
+      - name: Summarize Stage 3B matrix point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os, re
+          beam = os.environ['BEAM']; x = os.environ['XCSE']; rr = os.environ['RR']; ncase = os.environ['NCASE']
+          p = Path(f'stage3b_logs/stage3b_{beam}_x{x}_rr{rr}.log')
+          out = Path('stage3b_point_summary.csv')
+          cols = ['beam','xcse','rr','ncase','water_dose','water_unc_pct','chamber_dose','chamber_unc_pct','ratio','ratio_unc_abs','ratio_unc_pct','elapsed_s']
+          if not p.exists():
+              out.write_text(','.join(cols)+'\n'+f'{beam},{x},{rr},{ncase},NA,NA,NA,NA,NA,NA,NA,NA\n')
+              print(out.read_text()); raise SystemExit(0)
+          text = p.read_text(errors='replace')
+          def dose(name):
+              ms = re.findall(rf'^{name}\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s*%', text, re.M)
+              return ms[-1] if ms else ('NA','NA')
+          wd, wu = dose('dose_to_water'); cd, cu = dose('chamber_in_water')
+          mr = re.findall(r'^dose_to_water\s+chamber_in_water\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)', text, re.M)
+          if mr:
+              r, ur = map(float, mr[-1]); rup = 100.0*ur/r
+              rs, urs, rups = f'{r:.8g}', f'{ur:.8g}', f'{rup:.5f}'
+          else:
+              rs=urs=rups='NA'
+          me = re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s', text)
+          elapsed = me[-1] if me else 'NA'
+          row = [beam,x,rr,ncase,wd,wu,cd,cu,rs,urs,rups,elapsed]
+          out.write_text(','.join(cols)+'\n'+','.join(row)+'\n')
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 3B diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage3b-${{ matrix.beam }}-x64-rr64
+          path: |
+            stage3b_spectra.log
+            stage3b_configure.log
+            stage3b_egs_chamber_build.log
+            stage3b_logs/*.log
+            stage3b_point_summary.csv
+            results/czarnecki_spectrum_summary.csv
+            spectra/benchmark_czarnecki2020/${{ matrix.beam }}.ensrc
+            spectra/benchmark_czarnecki2020/${{ matrix.beam }}_spekpy.csv
+          if-no-files-found: warn
