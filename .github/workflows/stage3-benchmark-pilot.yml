@@ -60,7 +60,7 @@ jobs:
           set -o pipefail
           ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage3_configure.log"
 
-      - name: Build egs_chamber
+      - name: Build egs_chamber with radiative Compton support
         shell: bash
         run: |
           export EGS_HOME="$EGSRUN/egs_home/"
@@ -68,6 +68,24 @@ jobs:
           export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
           export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
           cd "$EGS_HOME/egs_chamber"
+
+          # Czarnecki et al. require Radiative Compton corrections = On.
+          # EGSnrc ships rad_compton1.mortran but egs_chamber's default
+          # Makefile does not compile it. Insert it immediately before
+          # get_inputs.mortran, as required by the EGSnrc source comments.
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('Makefile')
+          text = p.read_text()
+          old = 'CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new = ('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+                 '$(EGS_SOURCEDIR)rad_compton1.mortran '
+                 '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile for rad_compton1.mortran')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          grep -n 'CPP_SOURCES' Makefile
           set -o pipefail
           make 2>&1 | tee "$GITHUB_WORKSPACE/stage3_egs_chamber_build.log"
           test -x "$EGS_HOME/bin/gha/egs_chamber"
@@ -102,10 +120,11 @@ jobs:
               log="stage3_logs/${name}.log"
               grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
               grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+              grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
               grep -Eq 'photon cross-section enhancement[[:space:]]*=[[:space:]]*On' "$log"
-              if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.|missing/wrong .enhance regions.|missing/wrong .enhancement.|number of .enhance regions. must match .enhancement.' "$log"; then
+              if grep -Eqi 'segmentation fault|fatal error|geometry error|missing/wrong .cavity geometry.|missing/wrong .enhance regions.|missing/wrong .enhancement.|number of .enhance regions. must match .enhancement.|Turning radiative Compton corrections OFF' "$log"; then
                 echo "Fatal Stage 3 diagnostic in ${name}"
-                grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong|enhance regions.*must match' "$log" || true
+                grep -Ein 'segmentation fault|fatal error|geometry error|missing/wrong|enhance regions.*must match|radiative Compton' "$log" || true
                 exit 1
               fi
               echo "--- dose/ratio tail: ${name} ---"
