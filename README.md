@@ -4,7 +4,7 @@ Monte Carlo project for deriving chamber-specific beam-quality correction factor
 
 > **Canonical task:** `docs/CANONICAL_MC_TASK.md` and `data/terad_clinical_geometries.csv` define the user-supplied TERAD beam qualities, all 12 applicator combinations and the real RW3 chamber setup. These inputs take priority over later exploratory branches.
 
-> **Current milestone:** Stage 3 benchmark refinement. TERAD Stage 1 is accepted first-pass using the original user-supplied measured HVLs 0.224 / 0.410 / 0.729 / 1.452 mm Cu. The temporary Stage 1R branch based on 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu is superseded.
+> **Current milestone:** **Stage 3G high-stat Model A replication is running**. TERAD Stage 1 is accepted first-pass using the original user-supplied measured HVLs **0.224 / 0.410 / 0.729 / 1.452 mm Cu**. The temporary Stage 1R branch based on 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu is superseded.
 
 ## Primary target
 
@@ -42,7 +42,7 @@ Authoritative files:
 
 ## Real clinical TERAD geometries
 
-For **every** Q120/Q140/Q150/Q200 quality, all three applicators are part of the task:
+For **every** Q120/Q140/Q150/Q200 quality, all three applicators are part of the production task:
 
 - F40 / SSD 40 cm / 6 x 8 cm2;
 - F40 / SSD 40 cm / 4 x 15 cm2;
@@ -93,7 +93,7 @@ All beams satisfy the <=0.5% HVL acceptance target.
 
 Full record: `results/spekpy_fit_summary.csv`.
 
-Approximate mean photon energies of the accepted first-pass spectra:
+Approximate mean photon energies:
 
 - Q120: 56.84 keV;
 - Q140: 65.41 keV;
@@ -104,7 +104,7 @@ See `docs/SPECTRUM_MODEL_STAGE1.md`.
 
 ### Superseded Stage 1R branch
 
-A temporary branch mistakenly promoted the unrelated values 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu. Runs `34566147632`, `34566631576`, and `34566781628` therefore tested the wrong TERAD input set. They are retained only as audit history and their physical conclusions do not apply to production TERAD spectra.
+Runs `34566147632`, `34566631576`, and `34566781628` used the wrong temporary HVL set and are retained only as audit history. Their physical conclusions do not apply to production TERAD spectra.
 
 ## Reference geometries for factorisation
 
@@ -113,7 +113,7 @@ A temporary branch mistakenly promoted the unrelated values 0.12198 / 0.22715 / 
 - water;
 - SDD = 100 cm;
 - reference depth = 5 g/cm2 H2O;
-- field = 10 x 10 cm2 at the chamber reference plane.
+- field = 10 x 10 cm2 at chamber reference plane.
 
 **TERAD intrinsic `k_Q` internal reference**
 
@@ -139,7 +139,7 @@ Accepted Stage 3 VRT architecture:
 - Russian Roulette survival = 1/64;
 - `ESAVE = 0.512 MeV`;
 - local XCSE zones for water and chamber scoring;
-- independent RNG seeds for independent qualities.
+- independent RNG seeds for independent qualities and replications.
 
 ## Project status
 
@@ -148,7 +148,7 @@ Accepted Stage 3 VRT architecture:
 | 0 | EGSnrc / egs_chamber CI | ✅ complete |
 | 1 | TERAD production spectra | ✅ accepted first pass |
 | 2 | PTW 30013 geometry — Model A | 🟡 provisional |
-| 3 | Published medium-kV benchmark | 🟡 Stage 3F complete; high-stat refinement still needed |
+| 3 | Published medium-kV benchmark | 🟡 **Stage 3G high-stat replication running** |
 | 4 | Co-60 reference ratio | ⏸ blocked by Stage 3 acceptance |
 | 5 | TERAD intrinsic `k_Q,Co` in F50 reference | ⏸ blocked by Stage 3 acceptance |
 | 6 | TERAD spectrum/chamber sensitivity | pending |
@@ -185,14 +185,38 @@ Published normalization:
 
 Chronology:
 
-- Stage 3A: XCSE diagnostic;
-- Stage 3B: accepted VRT architecture;
-- Stage 3C: 200M legacy benchmark, `k100,250 = 0.907674 ± 0.006748`, showing a large spectral-surrogate discrepancy;
-- Stage 3D: root-cause screen;
-- Stage 3E: 200M discrimination, best high-stat `pubemin_vac = 0.939163 ± 0.007024`, about -1.51% versus published midpoint;
-- Stage 3F: spectrum-engine / chamber-geometry sensitivity complete; 50M `kqp_modelA = 0.953214` with ~1.49% MC uncertainty, while geometry perturbations demonstrated percent-level sensitivity.
+- **Stage 3A:** XCSE diagnostic;
+- **Stage 3B:** accepted VRT architecture;
+- **Stage 3C:** 200M legacy benchmark, `k100,250 = 0.907674 ± 0.006748`, showing a large spectral-surrogate discrepancy;
+- **Stage 3D:** root-cause screen;
+- **Stage 3E:** 200M discrimination, `pubemin_vac = 0.93916265 ± 0.00702366`, about -1.51% versus published midpoint 0.95355;
+- **Stage 3F:** spectrum-engine / chamber-geometry screen; 50M `kqp_modelA = 0.953214` with ~1.49% MC uncertainty. Geometry perturbations showed percent-level sensitivity, but they were screening tests and are not used to tune Model A.
 
-Stage 3F therefore requires selective high-stat confirmation before the benchmark gate is accepted. No chamber parameter will be tuned merely to force agreement.
+### Stage 3G — high-stat Model A replication 🟡 RUNNING
+
+Workflow: `.github/workflows/stage3g-highstat-modelA-replication.yml`.
+
+Design:
+
+- preferred `kqp` / published-filtration / published-`Emin` benchmark spectrum;
+- Model A chamber unchanged;
+- CCRI100 and CCRI250 only;
+- **two independent replications** (`repA`, `repB`);
+- **300,000,000 histories per beam per replication**;
+- four independent RNG seed pairs;
+- same pinned EGSnrc, IPSS/TmpPhsp, XCSE64 and RR64 as the accepted benchmark architecture;
+- explicit check that the Stage 3F `kqp` numeric spectrum is identical to the Stage 3E `published_emin` spectrum before simulation.
+
+The summary job calculates:
+
+1. `k100,250` and uncertainty for each 300M replication;
+2. repA-versus-repB consistency z-score;
+3. inverse-variance Stage 3G weighted estimate;
+4. consistency with Stage 3E high-stat result;
+5. an optional pooled Stage 3E + Stage 3G estimate;
+6. deviation and z-score versus the published target 0.95355.
+
+No chamber geometry parameter is changed in Stage 3G and no parameter is tuned to force agreement.
 
 ## Acceptance gates before production Stage 4/5
 
@@ -207,4 +231,4 @@ After that the project will:
 5. determine separate `k_g` for the two F40 geometries relative to F50;
 6. determine RW3-to-water correction;
 7. perform direct end-to-end MC for all 12 actual RW3 configurations;
-8. combine the final coefficients and uncertainty budget.
+8. combine final coefficients and uncertainty budget.
