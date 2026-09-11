@@ -2,7 +2,7 @@
 
 Monte Carlo project for deriving chamber-specific beam-quality correction factors for a PTW 30013 Farmer chamber used with a TERAD kilovoltage therapy unit.
 
-> **Current milestone:** Stage 1R — reconstruct physically plausible TERAD source-spectrum families constrained by the user-supplied measured HVLs. Stage 3F published-benchmark sensitivity is complete and Stage 3G is paused while the production TERAD spectra are rebuilt.
+> **Current milestone:** Stage 3 benchmark refinement. TERAD Stage 1 is restored to **accepted first-pass** status using the original user-supplied measured HVLs 0.224 / 0.410 / 0.729 / 1.452 mm Cu. The temporary Stage 1R branch based on 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu is superseded.
 
 ## Primary target
 
@@ -10,11 +10,11 @@ For Q = 120, 140, 150 and 200 kV:
 
 `k_Q,Co = (D_w / D_cav)_Q / (D_w / D_cav)_Co`
 
-The individual chamber calibration is anchored to:
+Individual chamber calibration:
 
 `N_D,w(Co-60) = 5.389e7 Gy/C`.
 
-The project keeps three physical problems separate:
+The project keeps separate:
 
 1. intrinsic chamber beam-quality correction `k_Q`;
 2. field/SSD/applicator correction `k_g`;
@@ -22,20 +22,18 @@ The project keeps three physical problems separate:
 
 ## Authoritative TERAD production baseline
 
-The single source of truth is:
+| Beam | Tube voltage | Tube current | Measured HVL1 | Known clinical filter |
+|---|---:|---:|---:|---|
+| Q120 | 120 kV | 10 mA | **0.224 mm Cu** | 4.0 mm Al |
+| Q140 | 140 kV | 10 mA | **0.410 mm Cu** | 0.2 mm Cu |
+| Q150 | 150 kV | 10 mA | **0.729 mm Cu** | 0.5 mm Cu |
+| Q200 | 200 kV | 7 mA | **1.452 mm Cu** | 1.0 mm Cu |
+
+Authoritative files:
 
 - `docs/TERAD_INPUT_BASELINE.md`;
 - `data/terad_input_baseline.csv`;
 - `data/beam_qualities.csv`.
-
-| Beam | Tube voltage | Tube current | Authoritative measured HVL1 | Known clinical filter |
-|---|---:|---:|---:|---|
-| Q120 | 120 kV | 10 mA | **0.12198 mm Cu** | 4.0 mm Al |
-| Q140 | 140 kV | 10 mA | **0.22715 mm Cu** | 0.2 mm Cu |
-| Q150 | 150 kV | 10 mA | **0.77398 mm Cu** | 0.5 mm Cu |
-| Q200 | 200 kV | 7 mA | **1.11223 mm Cu** | 1.0 mm Cu |
-
-These HVLs are accepted directly as measured beam-quality inputs. The absorber thicknesses historically used to determine them are not required by the MC source model once the HVLs themselves are accepted.
 
 Clinical applicators retained for all four Farmer-beam qualities:
 
@@ -43,46 +41,73 @@ Clinical applicators retained for all four Farmer-beam qualities:
 - F40 4 x 15 cm2;
 - F50 8 x 10 cm2.
 
-The first intrinsic TERAD `k_Q` calculation uses F50 / 8 x 10 cm2 / SSD 50 cm. F40 applicators remain reserved for the later separate `k_g` study.
+The first intrinsic TERAD `k_Q` calculation uses F50 / 8 x 10 cm2 / SSD 50 cm. F40 conditions are reserved for the separate `k_g` study.
 
-The published CCRI100/135/180/250 benchmark beams are validation-only inputs and must never overwrite the TERAD baseline.
+The published CCRI100/135/180/250 benchmark beams are validation-only inputs and never redefine the TERAD baseline.
 
-## Why HVL is enough to continue Stage 1R
+## Stage 1 — accepted TERAD spectrum model ✅
 
-For MC, the measured HVL is a constraint on the incident photon spectrum. Historical `x1/x2` plate thicknesses belong to the measurement procedure, not to the production MC geometry.
+First-pass source model:
 
-HVL alone does not uniquely specify a spectrum. Therefore Stage 1R must not attempt to recover the old absorber stacks. Instead it must construct a bounded family of spectra that all preserve:
+- SpekPy 2.5.4;
+- W reflection target;
+- nominal 20 degree anode angle;
+- `kqp` physics;
+- 0.5 keV bins;
+- known clinical filter;
+- non-negative equivalent-Al nuisance thickness where required.
 
-- the authoritative nominal kVp;
-- TERAD tube/head information where known;
-- the known clinical removable filter;
-- the authoritative measured HVL.
+The equivalent-Al term is a spectrum-model nuisance parameter and is not claimed to be measured inherent filtration.
 
-Any residual difference among spectra sharing the same kVp/filter/HVL is treated as spectrum-shape uncertainty and propagated into `D_w/D_cav` and `k_Q,Co`.
+Accepted results:
+
+| Beam | Target HVL1 | Known-filter-only HVL | Eq. Al | Final HVL1 | Error |
+|---|---:|---:|---:|---:|---:|
+| Q120 | 0.224000 | 0.207172 | 0.447246 mm | 0.224000 | 0.000% |
+| Q140 | 0.410000 | 0.388502 | 0.525157 mm | 0.410000 | 0.000% |
+| Q150 | 0.729000 | 0.723665 | 0.264108 mm | 0.729000 | 0.000% |
+| Q200 | 1.452000 | 1.452955 | 0.000000 mm | 1.452955 | +0.0658% |
+
+All beams satisfy the <=0.5% HVL acceptance target.
+
+Full record: `results/spekpy_fit_summary.csv`.
+
+Approximate mean photon energies of the accepted first-pass spectra:
+
+- Q120: 56.84 keV;
+- Q140: 65.41 keV;
+- Q150: 75.36 keV;
+- Q200: 96.21 keV.
+
+See `docs/SPECTRUM_MODEL_STAGE1.md`.
+
+### Superseded Stage 1R branch
+
+A temporary branch mistakenly promoted the unrelated values 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu. Runs `34566147632`, `34566631576`, and `34566781628` therefore tested the wrong TERAD input set. They are retained only as audit history and their physical conclusions do not apply to production TERAD spectra.
 
 ## Reference geometries
 
 **Co-60 certificate denominator**
+
 - water;
 - SDD = 100 cm;
 - reference depth = 5 g/cm2 H2O;
 - field = 10 x 10 cm2 at the chamber reference plane.
 
 **TERAD first intrinsic `k_Q` geometry**
+
 - water;
 - SSD = 50 cm;
 - F50 applicator;
 - field = 8 x 10 cm2 at phantom surface;
 - PTW 30013 reference point at 2 cm depth;
-- chamber axis perpendicular to the beam axis.
+- chamber axis perpendicular to beam axis.
 
 ## EGSnrc baseline
 
-The project is pinned to official NRC EGSnrc commit:
+Pinned official NRC EGSnrc commit:
 
 `f4d029f625a6c96ef3456e0b6d91d46ffce613e7`
-
-CI builds EGSnrc and `egs_chamber` reproducibly. Stage 3 patches `egs_chamber` so Radiative Compton corrections are explicitly enabled and verified.
 
 Accepted Stage 3 VRT architecture:
 
@@ -90,63 +115,27 @@ Accepted Stage 3 VRT architecture:
 - XCSE = 64;
 - Russian Roulette survival = 1/64;
 - `ESAVE = 0.512 MeV`;
-- local XCSE zones for both water and chamber scoring;
-- independent RNG seeds for independent high-stat benchmark qualities.
+- local XCSE zones for water and chamber scoring;
+- independent RNG seeds for independent qualities.
 
 ## Project status
 
 | Stage | Description | Status |
 |---:|---|---|
-| 0 | EGSnrc / egs_chamber CI infrastructure | ✅ complete |
-| 1R | TERAD production spectrum reconstruction from authoritative HVLs | 🟡 active priority |
+| 0 | EGSnrc / egs_chamber CI | ✅ complete |
+| 1 | TERAD production spectra | ✅ accepted first pass |
 | 2 | PTW 30013 geometry — Model A | 🟡 provisional |
-| 3 | Published medium-kV benchmark | 🟡 Stage 3F complete; Stage 3G paused |
-| 4 | Co-60 reference ratio | ⏸ blocked by Stages 1R and 3 |
-| 5 | TERAD `k_Q,Co` | ⏸ blocked by Stages 1R and 3 |
+| 3 | Published medium-kV benchmark | 🟡 Stage 3F complete; high-stat refinement still needed |
+| 4 | Co-60 reference ratio | ⏸ blocked by Stage 3 acceptance |
+| 5 | TERAD `k_Q,Co` | ⏸ blocked by Stage 3 acceptance |
 | 6 | TERAD spectrum/chamber sensitivity | pending |
 | 7 | Field / SSD / applicator correction `k_g` | pending |
 | 8 | RW3-to-water correction | pending |
 | 9 | Final coefficients and uncertainty budget | pending |
 
-## Stage 1R — TERAD spectrum reconstruction
-
-### Stage 1R-1 — broad spectrum feasibility map ✅
-
-Run `34566147632` tested four beams × SpekPy `kqp/spekcalc/spekpy-v1` × target angle 5–45 degrees with the clinical filter held fixed.
-
-The restricted family could not reproduce Q120/Q140/Q200 by adding only non-negative equivalent filtration; Q150 was representable. This means the restricted model family is inadequate. It does not invalidate the measured HVLs.
-
-### Stage 1R-2 — tube-informed audit ✅
-
-Run `34566631576` tested W target, candidate 30 degree target angle, Be-window sensitivity around 0.8 mm and the known clinical filters. The window hardened the simple model slightly and did not close the Q120/Q140/Q200 gap.
-
-Representative `kqp`, 0.8 mm Be predictions:
-
-- Q120: 0.196614 mm Cu vs measured 0.121980;
-- Q140: 0.373329 mm Cu vs measured 0.227150;
-- Q150: 0.705341 mm Cu vs measured 0.773980;
-- Q200: 1.401786 mm Cu vs measured 1.112230.
-
-### Stage 1R-3 — effective-kVp diagnostic ✅
-
-Run `34566781628` showed that a simple common voltage shift is not an adequate explanation of the discrepancy. That result is retained only as evidence that nominal-kVp-preserving spectral reconstruction is preferable to replacing the clinical kVp with arbitrary effective values.
-
-### Stage 1R-4 — next step: same-HVL spectrum family
-
-The next production task is to generate, for each Q120/Q140/Q150/Q200 beam, multiple candidate spectra that all preserve nominal kVp, known clinical filtration and the measured HVL, while differing in otherwise plausible spectral shape.
-
-Candidate families will be compared by:
-
-- exact HVL agreement;
-- mean energy and low/high-energy fluence balance;
-- any additional independent beam-quality data available;
-- impact on `D_w/D_cav` in the PTW 30013 calculation.
-
-The spread in `D_w/D_cav` across accepted same-HVL spectra becomes an explicit Stage 6 spectrum-model uncertainty rather than hidden tuning.
-
 ## Stage 2 — PTW 30013 Model A
 
-Model A is a transparent public-volume-constrained first-pass geometry:
+Model A first-pass geometry:
 
 - air-cavity radius = 3.05 mm;
 - internal cavity length = 21.80 mm;
@@ -161,7 +150,7 @@ Approximate aggregate volumes:
 - central electrode = 0.02202 cm3;
 - net air cavity = 0.61508 cm3.
 
-Model A does not claim exact proprietary tip, guard/dead-volume, electrode-base or stem construction. Those are explicit sensitivity terms.
+Model A does not claim exact proprietary tip, guard/dead-volume, electrode-base or stem construction. Those remain sensitivity terms.
 
 ## Stage 3 — published PTW 30013 medium-kV benchmark
 
@@ -175,16 +164,23 @@ Chronology:
 
 - Stage 3A: XCSE diagnostic;
 - Stage 3B: accepted VRT architecture;
-- Stage 3C: 200M legacy benchmark, large spectral-surrogate discrepancy;
+- Stage 3C: 200M legacy benchmark, `k100,250 = 0.907674 ± 0.006748`, showing a large spectral-surrogate discrepancy;
 - Stage 3D: root-cause screen;
-- Stage 3E: 200M discrimination, best high-stat `pubemin_vac = 0.939163 ± 0.007024`;
-- Stage 3F: spectrum-engine / chamber-geometry sensitivity complete; 50M `kqp_modelA` central value 0.953214 with 1.49% MC uncertainty; Stage 3G high-stat follow-up paused while Stage 1R is prioritized.
+- Stage 3E: 200M discrimination, best high-stat `pubemin_vac = 0.939163 ± 0.007024`, about -1.51% versus published midpoint;
+- Stage 3F: spectrum-engine / chamber-geometry sensitivity complete; 50M `kqp_modelA = 0.953214` with ~1.49% MC uncertainty, while geometry perturbations demonstrated percent-level sensitivity.
 
-## Acceptance gates before production
+Stage 3F therefore requires selective high-stat confirmation before the benchmark gate is accepted. No chamber parameter will be tuned merely to force agreement.
 
-Production Stage 4/5 starts only after both conditions are met:
+## Acceptance gates before production Stage 4/5
 
-1. Stage 1R provides accepted TERAD spectra/families reproducing the authoritative Q120/Q140/Q150/Q200 HVLs without changing the clinical beam settings;
-2. the PTW 30013 published-medium-kV benchmark is scientifically accepted with a justified uncertainty budget.
+Stage 1 is satisfied. The remaining primary gate is scientific acceptance of the PTW 30013 published benchmark with an adequate uncertainty budget.
 
-Then the project will calculate `R_Co`, TERAD `R_Q`, derive `k_Q,Co`, quantify spectrum/chamber sensitivity, determine separate `k_g`, determine RW3-to-water correction, and combine the final uncertainty budget.
+After that the project will:
+
+1. calculate `R_Co`;
+2. calculate TERAD Q120/Q140/Q150/Q200 `R_Q` using the accepted Stage 1 spectra;
+3. derive `k_Q,Co = R_Q / R_Co`;
+4. quantify TERAD-specific spectrum/chamber sensitivity;
+5. determine separate `k_g` for F40/F50 conditions;
+6. determine RW3-to-water correction;
+7. combine the final coefficients and uncertainty budget.
