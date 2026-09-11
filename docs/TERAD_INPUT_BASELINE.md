@@ -51,9 +51,22 @@ Those values are now superseded for production calculations by this baseline and
 
 The original Stage 1 model used SpekPy 2.5.4 with a W target, nominal 20 degree anode angle, `kqp` physics, the known added filter and then fitted only a non-negative equivalent-Al nuisance thickness.
 
-With the corrected HVLs, that one-parameter model is not physically able to represent all four beams: for Q120, Q140 and Q200 the known-filter-only SpekPy model is already harder than the measured beam. Adding positive Al can only increase HVL further. Therefore the former Stage 1 acceptance is revoked and Stage 1 is reopened.
+### Automatic feasibility diagnostic
+
+The corrected baseline was tested by `scripts/diagnose_terad_stage1_baseline.py` in GitHub Actions run `34564537373`.
+
+| Beam | Measured HVL (mm Cu) | Legacy known-filter-only HVL (mm Cu) | Difference vs measured | Legacy positive-Al fit |
+|---|---:|---:|---:|---|
+| Q120 | 0.121980 | 0.207172 | +69.84% | impossible: model already too hard |
+| Q140 | 0.227150 | 0.388502 | +71.03% | impossible: model already too hard |
+| Q150 | 0.773980 | 0.723665 | -6.50% | possible in principle |
+| Q200 | 1.112230 | 1.452955 | +30.63% | impossible: model already too hard |
+
+Thus Q120, Q140 and Q200 cannot be represented by the old one-parameter positive-equivalent-Al family. Adding positive Al can only increase HVL further. Q150 remains representable within that family, but the production model must be rebuilt consistently for all four beams rather than accepting a mixed ad hoc solution.
 
 This is a model-family mismatch, not a reason to alter the measured HVL values.
+
+The previous automatic `TERAD SpekPy spectra` workflow has therefore been retired to manual legacy/audit use. The authoritative automatic gate is now `TERAD Stage 1 baseline diagnostic`.
 
 ## Required Stage 1 rebuild
 
