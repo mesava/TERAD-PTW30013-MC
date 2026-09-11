@@ -2,7 +2,9 @@
 
 Monte Carlo project for deriving chamber-specific beam-quality correction factors for a PTW 30013 Farmer chamber used with a TERAD kilovoltage therapy unit.
 
-> **Current milestone:** Stage 3 benchmark refinement. TERAD Stage 1 is restored to **accepted first-pass** status using the original user-supplied measured HVLs 0.224 / 0.410 / 0.729 / 1.452 mm Cu. The temporary Stage 1R branch based on 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu is superseded.
+> **Canonical task:** `docs/CANONICAL_MC_TASK.md` and `data/terad_clinical_geometries.csv` define the user-supplied TERAD beam qualities, all 12 applicator combinations and the real RW3 chamber setup. These inputs take priority over later exploratory branches.
+
+> **Current milestone:** Stage 3 benchmark refinement. TERAD Stage 1 is accepted first-pass using the original user-supplied measured HVLs 0.224 / 0.410 / 0.729 / 1.452 mm Cu. The temporary Stage 1R branch based on 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu is superseded.
 
 ## Primary target
 
@@ -18,7 +20,8 @@ The project keeps separate:
 
 1. intrinsic chamber beam-quality correction `k_Q`;
 2. field/SSD/applicator correction `k_g`;
-3. RW3-to-water correction.
+3. RW3-to-water correction;
+4. direct end-to-end checks in the actual RW3 measurement geometry.
 
 ## Authoritative TERAD production baseline
 
@@ -31,17 +34,35 @@ The project keeps separate:
 
 Authoritative files:
 
+- `docs/CANONICAL_MC_TASK.md`;
 - `docs/TERAD_INPUT_BASELINE.md`;
 - `data/terad_input_baseline.csv`;
-- `data/beam_qualities.csv`.
+- `data/beam_qualities.csv`;
+- `data/terad_clinical_geometries.csv`.
 
-Clinical applicators retained for all four Farmer-beam qualities:
+## Real clinical TERAD geometries
 
-- F40 6 x 8 cm2;
-- F40 4 x 15 cm2;
-- F50 8 x 10 cm2.
+For **every** Q120/Q140/Q150/Q200 quality, all three applicators are part of the task:
 
-The first intrinsic TERAD `k_Q` calculation uses F50 / 8 x 10 cm2 / SSD 50 cm. F40 conditions are reserved for the separate `k_g` study.
+- F40 / SSD 40 cm / 6 x 8 cm2;
+- F40 / SSD 40 cm / 4 x 15 cm2;
+- F50 / SSD 50 cm / 8 x 10 cm2.
+
+Therefore production MC contains **12 real kV/applicator combinations**.
+
+The supplied RW3 setup is:
+
+- RW3 transverse size 30 x 30 cm2;
+- PTW 30013 horizontal, axis perpendicular to beam axis;
+- chamber centre on central axis;
+- stem to the right;
+- chamber centre at 2.0 cm water-equivalent depth;
+- 1.3 cm RW3 physically above the chamber body in the stated setup;
+- approximately 10 cm RW3 downstream;
+- lateral margin at least 10 cm;
+- applicator pressed directly against RW3 surface.
+
+F50 / 8 x 10 / SSD 50 is used only as an **internal reference geometry** for factorising intrinsic `k_Q` from field/SSD effects. It does **not** replace or remove the two F40 geometries. Final work includes direct end-to-end MC checks for all 12 RW3 configurations.
 
 The published CCRI100/135/180/250 benchmark beams are validation-only inputs and never redefine the TERAD baseline.
 
@@ -85,7 +106,7 @@ See `docs/SPECTRUM_MODEL_STAGE1.md`.
 
 A temporary branch mistakenly promoted the unrelated values 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu. Runs `34566147632`, `34566631576`, and `34566781628` therefore tested the wrong TERAD input set. They are retained only as audit history and their physical conclusions do not apply to production TERAD spectra.
 
-## Reference geometries
+## Reference geometries for factorisation
 
 **Co-60 certificate denominator**
 
@@ -94,7 +115,7 @@ A temporary branch mistakenly promoted the unrelated values 0.12198 / 0.22715 / 
 - reference depth = 5 g/cm2 H2O;
 - field = 10 x 10 cm2 at the chamber reference plane.
 
-**TERAD first intrinsic `k_Q` geometry**
+**TERAD intrinsic `k_Q` internal reference**
 
 - water;
 - SSD = 50 cm;
@@ -102,6 +123,8 @@ A temporary branch mistakenly promoted the unrelated values 0.12198 / 0.22715 / 
 - field = 8 x 10 cm2 at phantom surface;
 - PTW 30013 reference point at 2 cm depth;
 - chamber axis perpendicular to beam axis.
+
+After intrinsic `k_Q`, the two F40 geometries are evaluated explicitly for `k_g`, followed by RW3-to-water calculations and direct RW3 end-to-end validation.
 
 ## EGSnrc baseline
 
@@ -127,10 +150,10 @@ Accepted Stage 3 VRT architecture:
 | 2 | PTW 30013 geometry — Model A | 🟡 provisional |
 | 3 | Published medium-kV benchmark | 🟡 Stage 3F complete; high-stat refinement still needed |
 | 4 | Co-60 reference ratio | ⏸ blocked by Stage 3 acceptance |
-| 5 | TERAD `k_Q,Co` | ⏸ blocked by Stage 3 acceptance |
+| 5 | TERAD intrinsic `k_Q,Co` in F50 reference | ⏸ blocked by Stage 3 acceptance |
 | 6 | TERAD spectrum/chamber sensitivity | pending |
-| 7 | Field / SSD / applicator correction `k_g` | pending |
-| 8 | RW3-to-water correction | pending |
+| 7 | F40/F50 field-SSD-applicator correction `k_g` | pending |
+| 8 | RW3-to-water + 12 direct RW3 end-to-end checks | pending |
 | 9 | Final coefficients and uncertainty budget | pending |
 
 ## Stage 2 — PTW 30013 Model A
@@ -178,9 +201,10 @@ Stage 1 is satisfied. The remaining primary gate is scientific acceptance of the
 After that the project will:
 
 1. calculate `R_Co`;
-2. calculate TERAD Q120/Q140/Q150/Q200 `R_Q` using the accepted Stage 1 spectra;
-3. derive `k_Q,Co = R_Q / R_Co`;
+2. calculate intrinsic TERAD Q120/Q140/Q150/Q200 `R_Q` in the F50 reference geometry;
+3. derive four intrinsic `k_Q,Co` values;
 4. quantify TERAD-specific spectrum/chamber sensitivity;
-5. determine separate `k_g` for F40/F50 conditions;
+5. determine separate `k_g` for the two F40 geometries relative to F50;
 6. determine RW3-to-water correction;
-7. combine the final coefficients and uncertainty budget.
+7. perform direct end-to-end MC for all 12 actual RW3 configurations;
+8. combine the final coefficients and uncertainty budget.
