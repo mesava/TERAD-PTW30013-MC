@@ -1,0 +1,53 @@
+name: Stage 1R TERAD effective-kVp diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage1r-effective-kvp.yml'
+      - 'scripts/stage1r_effective_kvp_diagnostic.py'
+      - 'data/terad_input_baseline.csv'
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install spectrum dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10'
+      - name: Solve effective kVp required by each measured HVL
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/stage1r_effective_kvp_diagnostic.py | tee stage1r_effective_kvp.log
+      - name: Validate diagnostic
+        run: |
+          test -s results/stage1r_effective_kvp_diagnostic.csv
+          test -s results/stage1r_effective_kvp_summary.txt
+          cat results/stage1r_effective_kvp_summary.txt
+          python - <<'PY'
+          import csv
+          rows=list(csv.DictReader(open('results/stage1r_effective_kvp_diagnostic.csv')))
+          assert len(rows)==12, len(rows)
+          assert {r['beam_id'] for r in rows}=={'Q120','Q140','Q150','Q200'}
+          print('Stage 1R-3 effective-kVp diagnostic complete:',len(rows),'cases')
+          PY
+      - name: Upload Stage 1R effective-kVp diagnostic
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage1r-terad-effective-kvp
+          path: |
+            results/stage1r_effective_kvp_diagnostic.csv
+            results/stage1r_effective_kvp_summary.txt
+            stage1r_effective_kvp.log
+            data/terad_input_baseline.csv
+          if-no-files-found: error
