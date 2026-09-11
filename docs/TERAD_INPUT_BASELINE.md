@@ -1,25 +1,41 @@
 # TERAD production input baseline
 
-This document is the production input control record for TERAD calculations in this repository.
+This document is the authoritative source of truth for TERAD production calculations in this repository.
 
 It is intentionally separated from the Czarnecki published-benchmark inputs. Stage 3 CCRI100/135/180/250 beams exist only to validate the PTW 30013 Monte Carlo model and must never overwrite or redefine the clinical TERAD beam settings below.
 
-> **HVL provenance hold:** the tube voltages, currents, clinical removable filters and applicator inventory below remain accepted. The numeric HVLs are currently **PROVISIONAL** because Stage 1R showed that the same recorded D0/D1/D2 readings were later associated with different absorber-thickness pairs `(x1,x2)` in different spreadsheet versions. Production spectrum fitting and final TERAD `k_Q,Co` are blocked until the physical Cu plate stacks used for D1/D2 are verified or the HVLs are remeasured. See `docs/STAGE1R_HVL_PROVENANCE_AUDIT.md`.
+## Authoritative TERAD beam set
 
-## Controlled TERAD beam set
+The HVL values below are user-supplied measured beam-quality values and are accepted directly as MC input constraints. The absorber thicknesses used historically to derive those HVLs are **not required for Monte Carlo once the measured HVL itself is accepted**.
 
-| Beam | Tube voltage | Tube current | Current workbook HVL1 (Cu) | HVL status | Known added filtration | Clinical applicators represented in the source spreadsheet |
-|---|---:|---:|---:|---|---|---|
-| Q120 | 120 kV | 10 mA | 0.12198 mm Cu | PROVISIONAL — plate provenance hold | 4.0 mm Al | F40 6x8 cm2; F40 4x15 cm2; F50 8x10 cm2 |
-| Q140 | 140 kV | 10 mA | 0.22715 mm Cu | PROVISIONAL — plate provenance hold | 0.2 mm Cu | F40 6x8 cm2; F40 4x15 cm2; F50 8x10 cm2 |
-| Q150 | 150 kV | 10 mA | 0.77398 mm Cu | PROVISIONAL — plate provenance hold | 0.5 mm Cu | F40 6x8 cm2; F40 4x15 cm2; F50 8x10 cm2 |
-| Q200 | 200 kV | 7 mA | 1.11223 mm Cu | PROVISIONAL — plate provenance hold | 1.0 mm Cu | F40 6x8 cm2; F40 4x15 cm2; F50 8x10 cm2 |
+| Beam | Tube voltage | Tube current | Authoritative measured HVL1 (Cu) | Known added filtration | Clinical applicators |
+|---|---:|---:|---:|---|---|
+| Q120 | 120 kV | 10 mA | **0.12198 mm Cu** | 4.0 mm Al | F40 6x8 cm2; F40 4x15 cm2; F50 8x10 cm2 |
+| Q140 | 140 kV | 10 mA | **0.22715 mm Cu** | 0.2 mm Cu | F40 6x8 cm2; F40 4x15 cm2; F50 8x10 cm2 |
+| Q150 | 150 kV | 10 mA | **0.77398 mm Cu** | 0.5 mm Cu | F40 6x8 cm2; F40 4x15 cm2; F50 8x10 cm2 |
+| Q200 | 200 kV | 7 mA | **1.11223 mm Cu** | 1.0 mm Cu | F40 6x8 cm2; F40 4x15 cm2; F50 8x10 cm2 |
 
-Machine-readable copy: `data/terad_input_baseline.csv`. Until the provenance hold is closed, the HVL column in that CSV is retained for traceability only and must not be interpreted as an accepted production-spectrum target.
+Machine-readable copy: `data/terad_input_baseline.csv`.
+
+## What HVL means for Stage 1 Monte Carlo
+
+For production MC, HVL is used as a measured beam-quality constraint on the incident photon spectrum. The historical absorber pair `(x1,x2)` used to calculate the HVL is part of the measurement procedure, not part of the MC source model.
+
+Therefore Stage 1 must reproduce the accepted HVL values above; it must not reopen or reinterpret them from unrelated spreadsheet versions.
+
+HVL alone does **not** uniquely determine the complete photon spectrum. Stage 1 must therefore construct a physically plausible spectrum family consistent with:
+
+- nominal tube voltage;
+- tungsten target / TERAD tube information;
+- known clinical removable filter;
+- measured HVL;
+- any additional independent beam-quality observables available later (for example second HVL / homogeneity coefficient, measured depth-dose information, or other spectral constraints).
+
+Residual ambiguity between spectra sharing the same HVL is treated as a spectrum-model uncertainty, not as uncertainty in the supplied HVL.
 
 ## Production reference geometry
 
-The first intrinsic TERAD `k_Q` calculation will use one real clinical geometry as the reference condition:
+The first intrinsic TERAD `k_Q` calculation uses one real clinical geometry as the reference condition:
 
 - water phantom;
 - F50 applicator;
@@ -28,57 +44,36 @@ The first intrinsic TERAD `k_Q` calculation will use one real clinical geometry 
 - PTW 30013 reference point at 2 cm depth in water;
 - chamber axis perpendicular to the beam axis.
 
-The F40 6 x 8 cm2 and F40 4 x 15 cm2 applicators are not discarded. They are reserved for the separate field/SSD/applicator correction study `k_g`, so that intrinsic chamber beam-quality correction and applicator geometry effects are not mixed.
+The F40 6 x 8 cm2 and F40 4 x 15 cm2 applicators are preserved for the separate field/SSD/applicator correction study `k_g`, so that intrinsic chamber beam-quality correction and applicator geometry effects are not mixed.
 
 ## Separation from the Stage 3 benchmark
 
-The published CCRI100/135/180/250 spectra, filters and geometries belong exclusively to the validation problem:
+The published CCRI100/135/180/250 spectra, filters and geometries belong exclusively to validation of the PTW 30013 / MC methodology. They are not TERAD beam substitutes.
 
-`PTW 30013 Model -> published k_Q benchmark`.
+## Stage 1R findings so far
 
-They are not TERAD beam substitutes and must not be used as clinical TERAD input data.
+The previous one-parameter model family (SpekPy spectrum + known clinical filter + only non-negative equivalent-Al adjustment) cannot represent Q120, Q140 and Q200 because those nominal SpekPy spectra are already harder than the accepted measured HVLs. This does **not** invalidate the measured HVLs. It invalidates that restricted spectrum-model family for these TERAD beams.
 
-## Stage 1 history
+Stage 1R therefore proceeds by broadening the source-spectrum model rather than changing the measured HVLs.
 
-The first Stage 1 spectra were fitted to an earlier project HVL set:
+Completed diagnostics:
 
-- Q120: 0.224 mm Cu;
-- Q140: 0.410 mm Cu;
-- Q150: 0.729 mm Cu;
-- Q200: 1.452 mm Cu.
+- Stage 1R-1: spectrum-engine / anode-angle feasibility map;
+- Stage 1R-2: W-target / Be-window tube-informed check;
+- Stage 1R-3: effective-kVp diagnostic showing that a simple common voltage shift is not an adequate explanation.
 
-A later spreadsheet reconstruction produced the current values 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu. Stage 1R subsequently demonstrated that the later values arise after changing the absorber-thickness pairs associated with unchanged D0/D1/D2 readings. Therefore neither historical set is promoted here as final merely because it produces a more convenient spectrum model. The physical measurement provenance decides the accepted HVL.
+These diagnostics are retained as model-selection evidence only.
 
-The original Stage 1 model used SpekPy 2.5.4 with a W target, nominal 20 degree anode angle, `kqp` physics, the known added filter and then fitted only a non-negative equivalent-Al nuisance thickness.
+## Acceptance rule before production spectrum use
 
-## Stage 1R evidence
+For each Q120/Q140/Q150/Q200 beam, Stage 1 must produce at least one accepted spectrum (and preferably a bounded spectrum family) that:
 
-### Stage 1R-1 feasibility map
-
-GitHub Actions run `34566147632` scanned 108 combinations (four beams × `kqp/spekcalc/spekpy-v1` × target angle 5–45 degrees) with the clinical removable filter fixed. For the current provisional HVLs, Q120/Q140/Q200 had no positive-filtration solution; Q150 was generally representable.
-
-### Stage 1R-2 tube-informed audit
-
-Run `34566631576` added TERAD hardware constraints: W target, candidate 30 degree target angle and Be exit-window sensitivity around the documented 0.8 mm value. The Be window hardened the model slightly and did not explain the soft provisional Q120/Q140/Q200 HVLs.
-
-### Stage 1R-3 effective-kVp diagnostic
-
-Run `34566781628` solved the idealized constant-potential kVp required to reproduce the provisional HVLs with W / 30 degree / 0.8 mm Be / clinical filter held fixed. Representative `kqp` solutions were about 83.9, 98.4, 162.2 and 165.1 kV for nominal 120, 140, 150 and 200 kV respectively. The inconsistent direction rules out a simple common kV calibration shift as an adequate explanation.
-
-### Stage 1R-4 provenance audit
-
-Spreadsheet comparison found unchanged D0/D1/D2 readings but changed `x1/x2` assignments between versions. This is now the primary upstream uncertainty. Full details are in `docs/STAGE1R_HVL_PROVENANCE_AUDIT.md`.
-
-## Acceptance rule before production spectrum generation
-
-Before any production TERAD `k_Q,Co` calculation:
-
-1. recover the actual absorber plate IDs/stacks used for D1 and D2 for Q120/Q140/Q150/Q200, or repeat the narrow-beam HVL measurements while recording those IDs;
-2. calculate each HVL from the verified physical `x1,x2` and the corresponding D0/D1/D2;
-3. update `data/terad_input_baseline.csv` with the accepted HVLs;
-4. rebuild Stage 1 spectra without unphysical negative filtration and without changing the known clinical removable filters;
-5. only then proceed to the Co-60 denominator and TERAD production `k_Q,Co`.
+1. preserves the authoritative nominal kVp and known clinical filter;
+2. reproduces the authoritative measured HVL within the chosen numerical tolerance;
+3. does not rely on interpreting unrelated historical spreadsheet absorber stacks;
+4. is physically plausible and transparently documents any empirical spectral-shape correction;
+5. quantifies the effect of residual same-HVL spectral ambiguity on `D_w/D_cav` and ultimately on `k_Q,Co`.
 
 ## Change-control rule
 
-Any future change to TERAD voltage, current, accepted HVL, clinical filter or applicator information must first update this document and `data/terad_input_baseline.csv`. Downstream Stage 1 production spectra and final coefficients must then be regenerated from the revised baseline.
+Any future change to TERAD voltage, current, measured HVL, clinical filter or applicator information must first update this document and `data/terad_input_baseline.csv`. Downstream Stage 1 production spectra and final coefficients must then be regenerated.
