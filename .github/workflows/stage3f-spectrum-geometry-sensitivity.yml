@@ -1,0 +1,350 @@
+name: Stage 3F spectrum and chamber-geometry sensitivity
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage3f-spectrum-geometry-sensitivity.yml'
+      - 'scripts/generate_czarnecki_stage3f_spectra.py'
+
+jobs:
+  sensitivity:
+    name: ${{ matrix.case }} / ${{ matrix.beam }} / 50M
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        include:
+          - {case: kqp_modelA, spectrum: kqp, geometry: modelA, beam: CCRI100, seed1: '301', seed2: '1301'}
+          - {case: kqp_modelA, spectrum: kqp, geometry: modelA, beam: CCRI250, seed1: '302', seed2: '1302'}
+          - {case: spekcalc_modelA, spectrum: spekcalc, geometry: modelA, beam: CCRI100, seed1: '303', seed2: '1303'}
+          - {case: spekcalc_modelA, spectrum: spekcalc, geometry: modelA, beam: CCRI250, seed1: '304', seed2: '1304'}
+          - {case: spekpyv1_modelA, spectrum: spekpy_v1, geometry: modelA, beam: CCRI100, seed1: '305', seed2: '1305'}
+          - {case: spekpyv1_modelA, spectrum: spekpy_v1, geometry: modelA, beam: CCRI250, seed1: '306', seed2: '1306'}
+          - {case: spekcalc_cavr3025_vconst, spectrum: spekcalc, geometry: cavr3025_vconst, beam: CCRI100, seed1: '307', seed2: '1307'}
+          - {case: spekcalc_cavr3025_vconst, spectrum: spekcalc, geometry: cavr3025_vconst, beam: CCRI250, seed1: '308', seed2: '1308'}
+          - {case: spekcalc_cavr3075_vconst, spectrum: spekcalc, geometry: cavr3075_vconst, beam: CCRI100, seed1: '309', seed2: '1309'}
+          - {case: spekcalc_cavr3075_vconst, spectrum: spekcalc, geometry: cavr3075_vconst, beam: CCRI250, seed1: '310', seed2: '1310'}
+          - {case: spekcalc_elec055, spectrum: spekcalc, geometry: elec055, beam: CCRI100, seed1: '311', seed2: '1311'}
+          - {case: spekcalc_elec055, spectrum: spekcalc, geometry: elec055, beam: CCRI250, seed1: '312', seed2: '1312'}
+          - {case: spekcalc_elec060, spectrum: spekcalc, geometry: elec060, beam: CCRI100, seed1: '313', seed2: '1313'}
+          - {case: spekcalc_elec060, spectrum: spekcalc, geometry: elec060, beam: CCRI250, seed1: '314', seed2: '1314'}
+          - {case: spekcalc_graphite007, spectrum: spekcalc, geometry: graphite007, beam: CCRI100, seed1: '315', seed2: '1315'}
+          - {case: spekcalc_graphite007, spectrum: spekcalc, geometry: graphite007, beam: CCRI250, seed1: '316', seed2: '1316'}
+          - {case: spekcalc_graphite011, spectrum: spekcalc, geometry: graphite011, beam: CCRI100, seed1: '317', seed2: '1317'}
+          - {case: spekcalc_graphite011, spectrum: spekcalc, geometry: graphite011, beam: CCRI250, seed1: '318', seed2: '1318'}
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '50000000'
+      NBATCH: '10'
+      XCSE: '64'
+      RR: '64'
+      CASE: ${{ matrix.case }}
+      SPECTRUM_MODE: ${{ matrix.spectrum }}
+      GEOMETRY_MODE: ${{ matrix.geometry }}
+      BEAM: ${{ matrix.beam }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate Stage 3F spectrum families
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10'
+          set -o pipefail
+          python scripts/generate_czarnecki_stage3f_spectra.py 2>&1 | tee stage3f_spectra.log
+          test -s "spectra/benchmark_czarnecki2020_stage3f/${SPECTRUM_MODE}/${BEAM}.ensrc"
+          cat results/czarnecki_stage3f_spectrum_summary.csv
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage3f_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('Makefile')
+          text = p.read_text()
+          old = 'CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new = ('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+                 '$(EGS_SOURCEDIR)rad_compton1.mortran '
+                 '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage3f_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Build Stage 3F input
+        shell: bash
+        run: |
+          mkdir -p stage3f_inputs stage3f_logs
+          name="stage3f_${CASE}_${BEAM}"
+          sed \
+            -e "s/@@BEAM@@/${BEAM}/g" \
+            -e "s/@@XCSE@@/${XCSE}/g" \
+            -e "s/@@RR@@/${RR}/g" \
+            -e "s/@@NCASE@@/${NCASE}/g" \
+            inputs/stage3b_czarnecki_modelA_vrt.template.egsinp > "stage3f_inputs/${name}.egsinp"
+
+          python - "stage3f_inputs/${name}.egsinp" <<'PY'
+          from pathlib import Path
+          import math, os, sys
+
+          p = Path(sys.argv[1])
+          text = p.read_text()
+          mode = os.environ['GEOMETRY_MODE']
+          text = text.replace('nbatch = 10', f"nbatch = {os.environ['NBATCH']}", 1)
+
+          BASE_MASS = 7.410453757123e-4
+          BASE_R = 0.305
+          BASE_L = 2.18
+          ELEC_R = 0.0575
+          ELEC_L = 2.12
+          BASE_NET = math.pi * BASE_R**2 * BASE_L - math.pi * ELEC_R**2 * ELEC_L
+
+          def replace_once(old, new):
+              nonlocal_text[0] = nonlocal_text[0].replace(old, new, 1)
+
+          nonlocal_text = [text]
+
+          if mode in {'cavr3025_vconst', 'cavr3075_vconst'}:
+              r = 0.3025 if mode == 'cavr3025_vconst' else 0.3075
+              vint = math.pi * BASE_R**2 * BASE_L
+              L = vint / (math.pi * r**2)
+              end = (L - ELEC_L) / 2.0
+              if end <= 0:
+                  raise SystemExit(f'{mode}: non-positive end cavity thickness')
+              g = r + 0.009
+              pmma = g + 0.0335
+              shell = pmma + 1.0
+              axis = 1.0 + L/2.0
+              half = L/2.0
+              t = nonlocal_text[0]
+              if t.count('thickness = 0.03') != 2:
+                  raise SystemExit('Unexpected number of chamber end layers')
+              t = t.replace('thickness = 0.03', f'thickness = {end:.10f}')
+              t = t.replace('axis = 2.09 0 0  -1 0 0', f'axis = {axis:.10f} 0 0  -1 0 0', 1)
+              t = t.replace('0.305 0.314 0.3475 1.3475', f'{r:.10f} {g:.10f} {pmma:.10f} {shell:.10f}')
+              t = t.replace('0.0575 0.305 0.314 0.3475 1.3475', f'0.0575 {r:.10f} {g:.10f} {pmma:.10f} {shell:.10f}')
+              t = t.replace('radii = 0.305\n        name = ptw30013_cavity_cyl', f'radii = {r:.10f}\n        name = ptw30013_cavity_cyl', 1)
+              t = t.replace('positions = -1.09 1.09', f'positions = {-half:.10f} {half:.10f}', 1)
+              nonlocal_text[0] = t
+
+          elif mode in {'elec055', 'elec060'}:
+              r = 0.055 if mode == 'elec055' else 0.060
+              t = nonlocal_text[0]
+              t = t.replace('0.0575 0.305 0.314 0.3475 1.3475', f'{r:.10f} 0.305 0.314 0.3475 1.3475', 1)
+              net = math.pi * BASE_R**2 * BASE_L - math.pi * r**2 * ELEC_L
+              mass = BASE_MASS * net / BASE_NET
+              t = t.replace('cavity mass = 7.410453757123e-4', f'cavity mass = {mass:.15e}', 1)
+              nonlocal_text[0] = t
+
+          elif mode in {'graphite007', 'graphite011'}:
+              gout = 0.312 if mode == 'graphite007' else 0.316
+              t = nonlocal_text[0]
+              t = t.replace('0.305 0.314 0.3475 1.3475', f'0.305 {gout:.10f} 0.3475 1.3475')
+              t = t.replace('0.0575 0.305 0.314 0.3475 1.3475', f'0.0575 0.305 {gout:.10f} 0.3475 1.3475')
+              nonlocal_text[0] = t
+
+          elif mode != 'modelA':
+              raise SystemExit(f'Unknown geometry mode {mode}')
+
+          text = nonlocal_text[0]
+          rng = (
+              ':start rng definition:\n'
+              '    type = ranmar\n'
+              f"    initial seeds = {os.environ['SEED1']} {os.environ['SEED2']}\n"
+              ':stop rng definition:\n\n'
+          )
+          marker = ':start run control:'
+          if marker not in text:
+              raise SystemExit('Could not insert RNG definition')
+          text = text.replace(marker, rng + marker, 1)
+          p.write_text(text)
+          print(f'Built {mode} input: {p}')
+          PY
+
+      - name: Run Stage 3F point
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          name="stage3f_${CASE}_${BEAM}"
+          cp "spectra/benchmark_czarnecki2020_stage3f/${SPECTRUM_MODE}/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
+          cp "stage3f_inputs/${name}.egsinp" "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3f_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+          log="stage3f_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Fq 'else RR with survival probability 0.015625' "$log"
+          grep -Eq "initial seeds[[:space:]]*=[[:space:]]*${SEED1}[[:space:]]+${SEED2}" "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+          grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then
+            exit 1
+          fi
+
+      - name: Summarize Stage 3F point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, os, re
+          case, beam = os.environ['CASE'], os.environ['BEAM']
+          p = Path(f'stage3f_logs/stage3f_{case}_{beam}.log')
+          out = Path(f'stage3f_{case}_{beam}_summary.csv')
+          cols = ['case','beam','spectrum_mode','geometry_mode','ncase','seed1','seed2','water_dose','water_unc_pct','chamber_dose','chamber_unc_pct','ratio','ratio_unc_abs','ratio_unc_pct','elapsed_s']
+          row = {k:'NA' for k in cols}
+          row.update(case=case, beam=beam, spectrum_mode=os.environ['SPECTRUM_MODE'], geometry_mode=os.environ['GEOMETRY_MODE'], ncase=os.environ['NCASE'], seed1=os.environ['SEED1'], seed2=os.environ['SEED2'])
+          if p.exists():
+              text = p.read_text(errors='replace')
+              def dose(name):
+                  m = re.findall(rf'^{name}\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s*%', text, re.M)
+                  return m[-1] if m else ('NA','NA')
+              row['water_dose'], row['water_unc_pct'] = dose('dose_to_water')
+              row['chamber_dose'], row['chamber_unc_pct'] = dose('chamber_in_water')
+              m = re.findall(r'^dose_to_water\s+chamber_in_water\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)', text, re.M)
+              if m:
+                  r, ur = map(float, m[-1]); row['ratio']=f'{r:.8g}'; row['ratio_unc_abs']=f'{ur:.8g}'; row['ratio_unc_pct']=f'{100*ur/r:.5f}'
+              me = re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s', text)
+              if me: row['elapsed_s']=me[-1]
+          with out.open('w', newline='') as f:
+              w=csv.DictWriter(f,fieldnames=cols); w.writeheader(); w.writerow(row)
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 3F point
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage3f-${{ matrix.case }}-${{ matrix.beam }}
+          path: |
+            stage3f_spectra.log
+            stage3f_configure.log
+            stage3f_egs_chamber_build.log
+            stage3f_inputs/*.egsinp
+            stage3f_logs/*.log
+            stage3f_*_summary.csv
+            results/czarnecki_stage3f_spectrum_summary.csv
+            spectra/benchmark_czarnecki2020_stage3f/${{ matrix.spectrum }}/${{ matrix.beam }}.ensrc
+          if-no-files-found: warn
+
+  sensitivity-summary:
+    name: Evaluate Stage 3F sensitivity
+    needs: sensitivity
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Stage 3F point summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage3f-*
+          path: stage3f_downloads
+          merge-multiple: true
+
+      - name: Calculate Stage 3F comparison
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, math
+          rows={}
+          for p in Path('stage3f_downloads').glob('stage3f_*_summary.csv'):
+              with p.open(newline='') as f: row=next(csv.DictReader(f))
+              rows[(row['case'],row['beam'])]=row
+          cases=[
+              'kqp_modelA','spekcalc_modelA','spekpyv1_modelA',
+              'spekcalc_cavr3025_vconst','spekcalc_cavr3075_vconst',
+              'spekcalc_elec055','spekcalc_elec060',
+              'spekcalc_graphite007','spekcalc_graphite011'
+          ]
+          pub=0.95355
+          out=[]
+          for case in cases:
+              a=rows.get((case,'CCRI100')); b=rows.get((case,'CCRI250'))
+              if not a or not b or a['ratio']=='NA' or b['ratio']=='NA':
+                  out.append({'case':case,'k100_250':'NA','uk_abs':'NA','uk_pct':'NA','delta_vs_pub_pct':'NA','z_vs_pub':'NA','delta_vs_reference_pct':'NA','z_vs_reference':'NA'})
+                  continue
+              r100,u100=float(a['ratio']),float(a['ratio_unc_abs'])
+              r250,u250=float(b['ratio']),float(b['ratio_unc_abs'])
+              k=r100/r250
+              rel=math.sqrt((u100/r100)**2+(u250/r250)**2)
+              uk=k*rel
+              refcase='kqp_modelA' if case in {'spekcalc_modelA','spekpyv1_modelA'} else ('spekcalc_modelA' if case.startswith('spekcalc_') and case!='spekcalc_modelA' else None)
+              dref=zref='NA'
+              if refcase and (refcase,'CCRI100') in rows and (refcase,'CCRI250') in rows:
+                  ra,rb=rows[(refcase,'CCRI100')],rows[(refcase,'CCRI250')]
+                  rr100,uu100=float(ra['ratio']),float(ra['ratio_unc_abs'])
+                  rr250,uu250=float(rb['ratio']),float(rb['ratio_unc_abs'])
+                  kr=rr100/rr250
+                  ur=kr*math.sqrt((uu100/rr100)**2+(uu250/rr250)**2)
+                  delta=k-kr
+                  ud=math.sqrt(uk**2+ur**2)
+                  dref=f'{100*(k/kr-1):+.4f}'
+                  zref=f'{delta/ud:+.3f}'
+              out.append({
+                  'case':case,'k100_250':f'{k:.8f}','uk_abs':f'{uk:.8f}','uk_pct':f'{100*rel:.4f}',
+                  'delta_vs_pub_pct':f'{100*(k/pub-1):+.4f}','z_vs_pub':f'{(k-pub)/uk:+.3f}',
+                  'delta_vs_reference_pct':dref,'z_vs_reference':zref,
+              })
+          fields=list(out[0].keys())
+          with open('stage3f_sensitivity_summary.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(out)
+          print(Path('stage3f_sensitivity_summary.csv').read_text())
+          PY
+
+      - name: Upload Stage 3F sensitivity summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage3f-sensitivity-summary
+          path: stage3f_sensitivity_summary.csv
+          if-no-files-found: error
