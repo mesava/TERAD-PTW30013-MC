@@ -1,0 +1,13 @@
+beam_id,kvp,hvl_cu_mm,filter_material,filter_mm,tube_current_ma,applicator,ssd_cm,field_cm,phantom,phantom_transverse_cm,chamber,chamber_center_depth_we_cm,rw3_above_chamber_cm,rw3_downstream_cm,lateral_margin_cm_min,chamber_axis_vs_beam,stem_direction,applicator_contact
+Q120,120,0.224,Al,4.0,10,F40,40,6x8,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q120,120,0.224,Al,4.0,10,F40,40,4x15,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q120,120,0.224,Al,4.0,10,F50,50,8x10,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q140,140,0.410,Cu,0.2,10,F40,40,6x8,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q140,140,0.410,Cu,0.2,10,F40,40,4x15,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q140,140,0.410,Cu,0.2,10,F50,50,8x10,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q150,150,0.729,Cu,0.5,10,F40,40,6x8,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q150,150,0.729,Cu,0.5,10,F40,40,4x15,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q150,150,0.729,Cu,0.5,10,F50,50,8x10,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q200,200,1.452,Cu,1.0,7,F40,40,6x8,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q200,200,1.452,Cu,1.0,7,F40,40,4x15,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
+Q200,200,1.452,Cu,1.0,7,F50,50,8x10,RW3,30x30,PTW30013,2.0,1.3,10,10,perpendicular,right,yes
