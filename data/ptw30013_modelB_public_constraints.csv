@@ -1,0 +1,18 @@
+parameter,value,unit,status,source_note
+sensitive_volume_nominal,0.6,cm3,public_spec,PTW current product specification
+sensitive_radius,3.05,mm,public_spec,PTW current product specification
+sensitive_length,23.0,mm,public_spec,PTW current product specification
+pmma_wall_thickness,0.335,mm,public_spec,PTW current product specification
+pmma_density,1.19,g_cm3,public_spec,PTW current product specification
+graphite_wall_thickness,0.09,mm,public_spec,PTW current product specification
+graphite_density,1.85,g_cm3,public_spec,PTW current product specification
+central_electrode_material,Al_99.98,,public_spec,PTW current product specification
+central_electrode_diameter,1.15,mm,public_spec,PTW current product specification
+reference_point_from_tip,13.0,mm,public_spec,PTW current product specification
+design_guarded,true,,public_spec,PTW current product specification
+direction_of_incidence,radial,,public_spec,PTW current product specification
+tip_internal_geometry,unknown,,proprietary_or_unpublished,Do not invent; sensitivity only
+guard_ring_dimensions,unknown,,proprietary_or_unpublished,Do not invent; sensitivity only
+insulator_dimensions_materials,unknown,,proprietary_or_unpublished,Do not invent; sensitivity only
+central_electrode_length,unknown,,proprietary_or_unpublished,Do not claim Model A value as manufacturer truth
+stem_internal_geometry,unknown,,proprietary_or_unpublished,Do not invent; sensitivity only
