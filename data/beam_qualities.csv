@@ -1,5 +1,5 @@
-beam_id,kvp,hvl_cu_mm,known_filter_material,known_filter_mm,reference_applicator,reference_field_cm,reference_ssd_cm
-Q120,120,0.224,Al,4.0,F50,8x10,50
-Q140,140,0.410,Cu,0.2,F50,8x10,50
-Q150,150,0.729,Cu,0.5,F50,8x10,50
-Q200,200,1.452,Cu,1.0,F50,8x10,50
+beam_id,kvp,tube_current_ma,hvl_cu_mm,known_filter_material,known_filter_mm,reference_applicator,reference_field_cm,reference_ssd_cm
+Q120,120,10,0.12198,Al,4.0,F50,8x10,50
+Q140,140,10,0.22715,Cu,0.2,F50,8x10,50
+Q150,150,10,0.77398,Cu,0.5,F50,8x10,50
+Q200,200,7,1.11223,Cu,1.0,F50,8x10,50
