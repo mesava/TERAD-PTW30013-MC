@@ -1,0 +1,44 @@
+name: TERAD Stage 1 baseline diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'data/beam_qualities.csv'
+      - 'data/terad_input_baseline.csv'
+      - 'scripts/diagnose_terad_stage1_baseline.py'
+      - '.github/workflows/terad-stage1-baseline-diagnostic.yml'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install spectrum dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4'
+
+      - name: Diagnose legacy Stage 1 model against authoritative baseline
+        run: |
+          python scripts/diagnose_terad_stage1_baseline.py | tee terad_stage1_baseline_diagnostic.log
+          test -s results/terad_stage1_baseline_diagnostic.csv
+          cat results/terad_stage1_baseline_diagnostic.csv
+
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: terad-stage1-baseline-diagnostic
+          path: |
+            terad_stage1_baseline_diagnostic.log
+            results/terad_stage1_baseline_diagnostic.csv
+            data/beam_qualities.csv
+            data/terad_input_baseline.csv
+          if-no-files-found: error
