@@ -42,7 +42,7 @@ Authoritative files:
 
 ## Real clinical TERAD geometries
 
-For **every** Q120/Q140/Q150/Q200 quality, all three applicators are part of the production task:
+For **every** Q120/Q140/Q150/Q200 quality, all three applicators are equal members of the production task and each must be calculated explicitly:
 
 - F40 / SSD 40 cm / 6 x 8 cm2;
 - F40 / SSD 40 cm / 4 x 15 cm2;
@@ -62,7 +62,9 @@ The supplied RW3 setup is:
 - lateral margin at least 10 cm;
 - applicator pressed directly against RW3 surface.
 
-F50 / 8 x 10 / SSD 50 is used only as an **internal reference geometry** for factorising intrinsic `k_Q` from field/SSD effects. It does **not** replace or remove the two F40 geometries. Final work includes direct end-to-end MC checks for all 12 RW3 configurations.
+**F50 / 8 x 10 / SSD 50 is a real clinical configuration and is calculated in full for every kVp.** In addition, after its own calculation it is used as the mathematical normalization baseline for expressing the relative field/SSD/applicator response `k_g` of the two F40 configurations. Setting `k_g(F50)=1` is therefore only a normalization convention after the F50 response has been calculated; it is not an assumption that removes the F50 calculation.
+
+Final work includes direct end-to-end MC checks for **all 12 RW3 configurations**, including all four F50 cases.
 
 The published CCRI100/135/180/250 benchmark beams are validation-only inputs and never redefine the TERAD baseline.
 
@@ -106,7 +108,7 @@ See `docs/SPECTRUM_MODEL_STAGE1.md`.
 
 Runs `34566147632`, `34566631576`, and `34566781628` used the wrong temporary HVL set and are retained only as audit history. Their physical conclusions do not apply to production TERAD spectra.
 
-## Reference geometries for factorisation
+## Calculation structure for the three clinical applicators
 
 **Co-60 certificate denominator**
 
@@ -115,16 +117,23 @@ Runs `34566147632`, `34566631576`, and `34566781628` used the wrong temporary HV
 - reference depth = 5 g/cm2 H2O;
 - field = 10 x 10 cm2 at chamber reference plane.
 
-**TERAD intrinsic `k_Q` internal reference**
+For each TERAD quality Q, the project calculates the three supplied clinical configurations explicitly in water and later again in the matched RW3 geometry:
 
-- water;
-- SSD = 50 cm;
-- F50 applicator;
-- field = 8 x 10 cm2 at phantom surface;
-- PTW 30013 reference point at 2 cm depth;
-- chamber axis perpendicular to beam axis.
+1. **F50 / SSD 50 cm / 8 x 10 cm2**;
+2. **F40 / SSD 40 cm / 6 x 8 cm2**;
+3. **F40 / SSD 40 cm / 4 x 15 cm2**.
 
-After intrinsic `k_Q`, the two F40 geometries are evaluated explicitly for `k_g`, followed by RW3-to-water calculations and direct RW3 end-to-end validation.
+The chamber reference point is at 2 cm depth in the water calculation corresponding to the specified experimental chamber-centre depth, with chamber axis perpendicular to beam axis.
+
+For bookkeeping only, the calculated F50 water response is chosen as the normalization denominator for geometry-response ratios:
+
+`k_g,Q(F50 8x10) = 1` by definition,
+
+`k_g,Q(F40 6x8) = R_Q(F40 6x8) / R_Q(F50 8x10)`,
+
+`k_g,Q(F40 4x15) = R_Q(F40 4x15) / R_Q(F50 8x10)`.
+
+This normalization does not replace the F50 result. The F50 `R_Q`, `k_Q,Co`, RW3 response and end-to-end result are all explicit outputs.
 
 ## EGSnrc baseline
 
@@ -150,9 +159,9 @@ Accepted Stage 3 VRT architecture:
 | 2 | PTW 30013 geometry — Model A | 🟡 provisional |
 | 3 | Published medium-kV benchmark | 🟡 **Stage 3G high-stat replication running** |
 | 4 | Co-60 reference ratio | ⏸ blocked by Stage 3 acceptance |
-| 5 | TERAD intrinsic `k_Q,Co` in F50 reference | ⏸ blocked by Stage 3 acceptance |
+| 5 | TERAD water calculations for all three applicators at each kVp | ⏸ blocked by Stage 3 acceptance |
 | 6 | TERAD spectrum/chamber sensitivity | pending |
-| 7 | F40/F50 field-SSD-applicator correction `k_g` | pending |
+| 7 | Geometry-response ratios `k_g` derived from the three calculated applicators | pending |
 | 8 | RW3-to-water + 12 direct RW3 end-to-end checks | pending |
 | 9 | Final coefficients and uncertainty budget | pending |
 
@@ -225,10 +234,10 @@ Stage 1 is satisfied. The remaining primary gate is scientific acceptance of the
 After that the project will:
 
 1. calculate `R_Co`;
-2. calculate intrinsic TERAD Q120/Q140/Q150/Q200 `R_Q` in the F50 reference geometry;
-3. derive four intrinsic `k_Q,Co` values;
+2. calculate `R_Q` in water for **all 12 TERAD kVp/applicator combinations**;
+3. derive the F50 `k_Q,Co` result for each kVp and the corresponding F40 geometry-response ratios, while retaining the absolute calculated response for every applicator;
 4. quantify TERAD-specific spectrum/chamber sensitivity;
-5. determine separate `k_g` for the two F40 geometries relative to F50;
-6. determine RW3-to-water correction;
+5. calculate matched RW3 responses for all three applicators at all four kVp;
+6. determine RW3-to-water effects;
 7. perform direct end-to-end MC for all 12 actual RW3 configurations;
 8. combine final coefficients and uncertainty budget.
