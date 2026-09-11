@@ -1,0 +1,54 @@
+name: Stage 1R TERAD tube-informed audit
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage1r-tube-informed.yml'
+      - 'scripts/stage1r_tube_informed_scan.py'
+      - 'data/terad_input_baseline.csv'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned SpekPy
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4'
+      - name: Run tube-informed Stage 1R audit
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/stage1r_tube_informed_scan.py | tee stage1r_tube_informed.log
+      - name: Validate audit matrix
+        run: |
+          test -s results/stage1r_tube_informed_scan.csv
+          test -s results/stage1r_tube_informed_summary.txt
+          cat results/stage1r_tube_informed_summary.txt
+          python - <<'PY'
+          import csv
+          rows=list(csv.DictReader(open('results/stage1r_tube_informed_scan.csv')))
+          assert len(rows)==48, len(rows)
+          assert not any(r['status']=='engine_error' for r in rows), 'Tube-informed spectrum engine failure'
+          assert {r['beam_id'] for r in rows}=={'Q120','Q140','Q150','Q200'}
+          print('Stage 1R-2 tube-informed audit complete:',len(rows),'cases')
+          PY
+      - name: Upload Stage 1R tube-informed audit
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage1r-terad-tube-informed
+          path: |
+            results/stage1r_tube_informed_scan.csv
+            results/stage1r_tube_informed_summary.txt
+            stage1r_tube_informed.log
+            data/terad_input_baseline.csv
+          if-no-files-found: error
