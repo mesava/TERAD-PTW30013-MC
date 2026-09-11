@@ -1,0 +1,4 @@
+estimate,r100,u_r100,r250,u_r250,k100_250,uk_abs,uk_pct,delta_vs_pub_pct,z_vs_pub,note
+repA,1.01302000,0.00556000,1.08600000,0.00549000,0.93279926,0.00696043,0.7462,-2.1762,-2.981,independent 200M/beam SpekCalc+air48 replicate
+repB,1.00223000,0.00551000,1.08555000,0.00548000,0.92324628,0.00689095,0.7464,-3.1780,-4.398,independent 200M/beam SpekCalc+air48 replicate
+Stage3H1_weighted,NA,NA,NA,NA,0.92797486,0.00489702,0.5277,-2.6821,-5.223,repA-repB consistency z=+0.975
