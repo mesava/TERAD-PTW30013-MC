@@ -1,0 +1,5 @@
+beam_id,kvp,tube_current_ma,hvl_cu_mm,known_filter_material,known_filter_mm,applicators,reference_applicator,reference_field_cm,reference_ssd_cm,chamber
+Q120,120,10,0.12198,Al,4.0,"F40 6x8; F40 4x15; F50 8x10",F50,8x10,50,PTW30013
+Q140,140,10,0.22715,Cu,0.2,"F40 6x8; F40 4x15; F50 8x10",F50,8x10,50,PTW30013
+Q150,150,10,0.77398,Cu,0.5,"F40 6x8; F40 4x15; F50 8x10",F50,8x10,50,PTW30013
+Q200,200,7,1.11223,Cu,1.0,"F40 6x8; F40 4x15; F50 8x10",F50,8x10,50,PTW30013
