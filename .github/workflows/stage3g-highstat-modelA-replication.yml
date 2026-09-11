@@ -1,0 +1,289 @@
+name: Stage 3G high-stat Model A replication
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage3g-highstat-modelA-replication.yml'
+
+jobs:
+  replicate:
+    name: ${{ matrix.rep }} / ${{ matrix.beam }} / 300M
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {rep: repA, beam: CCRI100, seed1: '401', seed2: '1401'}
+          - {rep: repA, beam: CCRI250, seed1: '402', seed2: '1402'}
+          - {rep: repB, beam: CCRI100, seed1: '403', seed2: '1403'}
+          - {rep: repB, beam: CCRI250, seed1: '404', seed2: '1404'}
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      REP: ${{ matrix.rep }}
+      BEAM: ${{ matrix.beam }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate and cross-check benchmark spectrum
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10'
+          set -o pipefail
+          python scripts/generate_czarnecki_stage3d_spectra.py 2>&1 | tee stage3g_stage3d_spectra.log
+          python scripts/generate_czarnecki_stage3f_spectra.py 2>&1 | tee stage3g_stage3f_spectra.log
+          test -s "spectra/benchmark_czarnecki2020_stage3d/published_emin/${BEAM}.ensrc"
+          test -s "spectra/benchmark_czarnecki2020_stage3f/kqp/${BEAM}.ensrc"
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          beam=os.environ['BEAM']
+          a=Path(f'spectra/benchmark_czarnecki2020_stage3d/published_emin/{beam}.ensrc').read_text().splitlines()[1:]
+          b=Path(f'spectra/benchmark_czarnecki2020_stage3f/kqp/{beam}.ensrc').read_text().splitlines()[1:]
+          if a != b:
+              raise SystemExit(f'{beam}: Stage3E published_emin and Stage3F kqp numeric spectra differ')
+          print(f'{beam}: Stage3E published_emin == Stage3F kqp numeric spectrum')
+          PY
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage3g_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('Makefile')
+          text=p.read_text()
+          old='CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new=('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+               '$(EGS_SOURCEDIR)rad_compton1.mortran '
+               '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile')
+          p.write_text(text.replace(old,new,1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage3g_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Build Stage 3G input
+        shell: bash
+        run: |
+          mkdir -p stage3g_inputs stage3g_logs
+          name="stage3g_${REP}_${BEAM}"
+          sed \
+            -e "s/@@BEAM@@/${BEAM}/g" \
+            -e "s/@@XCSE@@/${XCSE}/g" \
+            -e "s/@@RR@@/${RR}/g" \
+            -e "s/@@NCASE@@/${NCASE}/g" \
+            inputs/stage3b_czarnecki_modelA_vrt.template.egsinp > "stage3g_inputs/${name}.egsinp"
+          python - "stage3g_inputs/${name}.egsinp" <<'PY'
+          from pathlib import Path
+          import os,sys
+          p=Path(sys.argv[1])
+          text=p.read_text()
+          text=text.replace('nbatch = 10',f"nbatch = {os.environ['NBATCH']}",1)
+          rng=(
+              ':start rng definition:\n'
+              '    type = ranmar\n'
+              f"    initial seeds = {os.environ['SEED1']} {os.environ['SEED2']}\n"
+              ':stop rng definition:\n\n'
+          )
+          marker=':start run control:'
+          if marker not in text:
+              raise SystemExit('Could not insert RNG definition')
+          text=text.replace(marker,rng+marker,1)
+          p.write_text(text)
+          PY
+
+      - name: Run Stage 3G point
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          name="stage3g_${REP}_${BEAM}"
+          cp "spectra/benchmark_czarnecki2020_stage3f/kqp/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
+          cp "stage3g_inputs/${name}.egsinp" "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3g_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+          log="stage3g_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Fq 'else RR with survival probability 0.015625' "$log"
+          grep -Fq "scoring phase-space at cavity of 'phsp_scoring_geometry'" "$log"
+          grep -Eq "initial seeds[[:space:]]*=[[:space:]]*${SEED1}[[:space:]]+${SEED2}" "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+          grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then
+            exit 1
+          fi
+
+      - name: Summarize Stage 3G point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv,os,re
+          rep,beam=os.environ['REP'],os.environ['BEAM']
+          p=Path(f'stage3g_logs/stage3g_{rep}_{beam}.log')
+          out=Path(f'stage3g_{rep}_{beam}_summary.csv')
+          cols=['rep','beam','ncase','seed1','seed2','water_dose','water_unc_pct','chamber_dose','chamber_unc_pct','ratio','ratio_unc_abs','ratio_unc_pct','elapsed_s']
+          row={k:'NA' for k in cols}
+          row.update(rep=rep,beam=beam,ncase=os.environ['NCASE'],seed1=os.environ['SEED1'],seed2=os.environ['SEED2'])
+          if p.exists():
+              text=p.read_text(errors='replace')
+              def dose(name):
+                  m=re.findall(rf'^{name}\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s*%',text,re.M)
+                  return m[-1] if m else ('NA','NA')
+              row['water_dose'],row['water_unc_pct']=dose('dose_to_water')
+              row['chamber_dose'],row['chamber_unc_pct']=dose('chamber_in_water')
+              m=re.findall(r'^dose_to_water\s+chamber_in_water\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)',text,re.M)
+              if m:
+                  r,ur=map(float,m[-1]); row['ratio']=f'{r:.8g}'; row['ratio_unc_abs']=f'{ur:.8g}'; row['ratio_unc_pct']=f'{100*ur/r:.5f}'
+              me=re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s',text)
+              if me: row['elapsed_s']=me[-1]
+          with out.open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=cols); w.writeheader(); w.writerow(row)
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 3G point
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage3g-${{ matrix.rep }}-${{ matrix.beam }}
+          path: |
+            stage3g_stage3d_spectra.log
+            stage3g_stage3f_spectra.log
+            stage3g_configure.log
+            stage3g_egs_chamber_build.log
+            stage3g_inputs/*.egsinp
+            stage3g_logs/*.log
+            stage3g_*_summary.csv
+            spectra/benchmark_czarnecki2020_stage3f/kqp/${{ matrix.beam }}.ensrc
+          if-no-files-found: warn
+
+  replication-summary:
+    name: Evaluate Stage 3G replication
+    needs: replicate
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Stage 3G point summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage3g-*
+          path: stage3g_downloads
+          merge-multiple: true
+
+      - name: Calculate replication and pooled estimate
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv,math
+          rows={}
+          for p in Path('stage3g_downloads').glob('stage3g_*_summary.csv'):
+              with p.open(newline='') as f: row=next(csv.DictReader(f))
+              rows[(row['rep'],row['beam'])]=row
+          pub=0.95355
+          stage3e_k=0.93916265
+          stage3e_u=0.00702366
+          reps=[]
+          for rep in ('repA','repB'):
+              a=rows.get((rep,'CCRI100')); b=rows.get((rep,'CCRI250'))
+              if not a or not b or a['ratio']=='NA' or b['ratio']=='NA':
+                  raise SystemExit(f'Missing valid data for {rep}')
+              r100,u100=float(a['ratio']),float(a['ratio_unc_abs'])
+              r250,u250=float(b['ratio']),float(b['ratio_unc_abs'])
+              k=r100/r250
+              rel=math.sqrt((u100/r100)**2+(u250/r250)**2)
+              uk=k*rel
+              reps.append((rep,r100,u100,r250,u250,k,uk))
+          kA,uA=reps[0][5],reps[0][6]
+          kB,uB=reps[1][5],reps[1][6]
+          zrep=(kA-kB)/math.sqrt(uA*uA+uB*uB)
+          weights=[1/(uA*uA),1/(uB*uB)]
+          knew=(weights[0]*kA+weights[1]*kB)/sum(weights)
+          unew=math.sqrt(1/sum(weights))
+          zpub=(knew-pub)/unew
+          ze=(knew-stage3e_k)/math.sqrt(unew*unew+stage3e_u*stage3e_u)
+          wall=[1/(stage3e_u*stage3e_u),1/(uA*uA),1/(uB*uB)]
+          kall=(wall[0]*stage3e_k+wall[1]*kA+wall[2]*kB)/sum(wall)
+          uall=math.sqrt(1/sum(wall))
+          zall=(kall-pub)/uall
+          fields=['estimate','k100_250','uk_abs','uk_pct','delta_vs_pub_pct','z_vs_pub','note']
+          out=[]
+          for rep,r100,u100,r250,u250,k,uk in reps:
+              out.append({'estimate':rep,'k100_250':f'{k:.8f}','uk_abs':f'{uk:.8f}','uk_pct':f'{100*uk/k:.4f}','delta_vs_pub_pct':f'{100*(k/pub-1):+.4f}','z_vs_pub':f'{(k-pub)/uk:+.3f}','note':'independent 300M/beam Stage3G replicate'})
+          out.append({'estimate':'Stage3G_weighted','k100_250':f'{knew:.8f}','uk_abs':f'{unew:.8f}','uk_pct':f'{100*unew/knew:.4f}','delta_vs_pub_pct':f'{100*(knew/pub-1):+.4f}','z_vs_pub':f'{zpub:+.3f}','note':f'repA-repB consistency z={zrep:+.3f}; vs Stage3E z={ze:+.3f}'})
+          out.append({'estimate':'Stage3E_plus_Stage3G','k100_250':f'{kall:.8f}','uk_abs':f'{uall:.8f}','uk_pct':f'{100*uall/kall:.4f}','delta_vs_pub_pct':f'{100*(kall/pub-1):+.4f}','z_vs_pub':f'{zall:+.3f}','note':'inverse-variance pool of Stage3E pubemin_vac and two Stage3G replicates'})
+          with open('stage3g_replication_summary.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(out)
+          Path('stage3g_replication_notes.txt').write_text(
+              f'repA_minus_repB_z={zrep:+.4f}\nStage3G_vs_Stage3E_z={ze:+.4f}\n'
+              f'Stage3E_reference={stage3e_k:.8f} +/- {stage3e_u:.8f}\n'
+              f'published_target={pub:.8f}\n'
+          )
+          print(Path('stage3g_replication_summary.csv').read_text())
+          print(Path('stage3g_replication_notes.txt').read_text())
+          PY
+
+      - name: Upload Stage 3G replication summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage3g-replication-summary
+          path: |
+            stage3g_replication_summary.csv
+            stage3g_replication_notes.txt
+          if-no-files-found: error
