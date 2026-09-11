@@ -1,0 +1,5 @@
+beam_id,kvp,tube_current_ma,known_filter_material,known_filter_mm,measured_hvl_cu_mm,legacy_base_hvl_cu_mm,base_minus_measured_percent,legacy_positive_al_fit_status,spekpy_version,physics,nominal_anode_angle_deg
+Q120,120,10,Al,4,0.121980,0.207172,+69.841,model_already_too_hard,2.5.4,kqp,20
+Q140,140,10,Cu,0.2,0.227150,0.388502,+71.033,model_already_too_hard,2.5.4,kqp,20
+Q150,150,10,Cu,0.5,0.773980,0.723665,-6.501,positive_Al_fit_possible,2.5.4,kqp,20
+Q200,200,7,Cu,1,1.112230,1.452955,+30.634,model_already_too_hard,2.5.4,kqp,20
