@@ -1,0 +1,320 @@
+name: Stage 3H-2 Model B0 public sensitive-length benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage3h2-modelB0-public-length.yml'
+
+jobs:
+  benchmark:
+    name: ${{ matrix.rep }} / ${{ matrix.beam }} / 200M / ModelB0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {rep: repA, beam: CCRI100, seed1: '601', seed2: '1601'}
+          - {rep: repA, beam: CCRI250, seed1: '602', seed2: '1602'}
+          - {rep: repB, beam: CCRI100, seed1: '603', seed2: '1603'}
+          - {rep: repB, beam: CCRI250, seed1: '604', seed2: '1604'}
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '200000000'
+      NBATCH: '20'
+      XCSE: '64'
+      RR: '64'
+      REP: ${{ matrix.rep }}
+      BEAM: ${{ matrix.beam }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate paper-surrogate SpekCalc spectra
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10' 'numpy>=1.26'
+          set -o pipefail
+          python scripts/generate_czarnecki_stage3f_spectra.py 2>&1 | tee stage3h2_spectra.log
+          test -s "spectra/benchmark_czarnecki2020_stage3f/spekcalc/${BEAM}.ensrc"
+          python scripts/stage3h0_spectrum_fidelity.py 2>&1 | tee stage3h2_fidelity.log
+          python - <<'PY'
+          import csv, os
+          beam=os.environ['BEAM']
+          rows=list(csv.DictReader(open('results/stage3h0_spectrum_fidelity.csv')))
+          r=next(x for x in rows if x['beam_id']==beam and x['mode']=='spekcalc')
+          print('Selected benchmark surrogate:', r)
+          assert abs(float(r['kerma_mean_error_percent'])) < 0.5
+          assert abs(float(r['hvl_error_percent'])) < 2.0
+          PY
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage3h2_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('Makefile')
+          text=p.read_text()
+          old='CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new=('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+               '$(EGS_SOURCEDIR)rad_compton1.mortran '
+               '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile')
+          p.write_text(text.replace(old,new,1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage3h2_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Build Model B0 paper-faithful input
+        shell: bash
+        run: |
+          mkdir -p stage3h2_inputs stage3h2_logs
+          name="stage3h2_${REP}_${BEAM}"
+          sed \
+            -e "s/@@BEAM@@/${BEAM}/g" \
+            -e "s/@@XCSE@@/${XCSE}/g" \
+            -e "s/@@RR@@/${RR}/g" \
+            -e "s/@@NCASE@@/${NCASE}/g" \
+            inputs/stage3b_czarnecki_modelA_vrt.template.egsinp > "stage3h2_inputs/${name}.egsinp"
+
+          python - "stage3h2_inputs/${name}.egsinp" <<'PY'
+          from pathlib import Path
+          import math, os, sys
+          p=Path(sys.argv[1])
+          text=p.read_text()
+          text=text.replace('nbatch = 10',f"nbatch = {os.environ['NBATCH']}",1)
+
+          # Model B0: only one public geometric constraint is changed relative
+          # to Model A: sensitive length 23.0 mm instead of 21.8 mm.
+          # Central-electrode length remains the legacy 21.2 mm computational
+          # assumption and is NOT claimed to be a manufacturer dimension.
+          if text.count('thickness = 0.03') != 2:
+              raise SystemExit('Unexpected Model A end-gap structure')
+          text=text.replace('thickness = 0.03','thickness = 0.09')
+          text=text.replace('axis = 2.09 0 0  -1 0 0','axis = 2.15 0 0  -1 0 0',1)
+          text=text.replace('positions = -1.09 1.09','positions = -1.15 1.15',1)
+
+          rho_air=1.2048e-3
+          r=0.305
+          L=2.30
+          re=0.0575
+          Le=2.12
+          net=math.pi*r*r*L-math.pi*re*re*Le
+          mass=net*rho_air
+          old='cavity mass = 7.410453757123e-4'
+          new=f'cavity mass = {mass:.15e}'
+          if old not in text:
+              raise SystemExit('Model A cavity mass anchor not found')
+          text=text.replace(old,new,1)
+
+          # Paper geometry: first 50 cm air is folded into the SpekCalc spectrum;
+          # explicitly transport the remaining 48 cm to the water surface.
+          marker='name = water_phantom'
+          if marker not in text:
+              raise SystemExit('water_phantom block not found')
+          head,tail=text.split(marker,1)
+          if 'z-planes = -2 18' not in tail:
+              raise SystemExit('Expected water phantom z planes not found')
+          tail=tail.replace('z-planes = -2 18','z-planes = -50 -2 18',1)
+          oldmedia='media = WATER_1KEV\n        :stop media input:'
+          newmedia='media = AIR_1KEV WATER_1KEV\n            set medium = 1 1\n        :stop media input:'
+          if oldmedia not in tail:
+              raise SystemExit('Expected water phantom media block not found')
+          tail=tail.replace(oldmedia,newmedia,1)
+          text=head+marker+tail
+
+          rng=(
+              ':start rng definition:\n'
+              '    type = ranmar\n'
+              f"    initial seeds = {os.environ['SEED1']} {os.environ['SEED2']}\n"
+              ':stop rng definition:\n\n'
+          )
+          marker=':start run control:'
+          if marker not in text:
+              raise SystemExit('Could not insert RNG definition')
+          text=text.replace(marker,rng+marker,1)
+          p.write_text(text)
+
+          print(f'Model B0 net air volume = {net:.12f} cm3')
+          print(f'Model B0 cavity mass = {mass:.15e} g')
+          assert abs(net-0.6501471018732639) < 1e-12
+          assert abs(mass-7.832972283369083e-4) < 1e-15
+          PY
+
+          grep -Fq 'axis = 2.15 0 0  -1 0 0' "stage3h2_inputs/${name}.egsinp"
+          test "$(grep -Fc 'thickness = 0.09' "stage3h2_inputs/${name}.egsinp")" -eq 2
+          grep -Fq 'positions = -1.15 1.15' "stage3h2_inputs/${name}.egsinp"
+          grep -Fq 'cavity mass = 7.832972283369083e-04' "stage3h2_inputs/${name}.egsinp"
+          grep -Fq 'z-planes = -50 -2 18' "stage3h2_inputs/${name}.egsinp"
+
+      - name: Run Stage 3H-2 B0 point
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          name="stage3h2_${REP}_${BEAM}"
+          cp "spectra/benchmark_czarnecki2020_stage3f/spekcalc/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
+          cp "stage3h2_inputs/${name}.egsinp" "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3h2_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+          log="stage3h2_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Eq "initial seeds[[:space:]]*=[[:space:]]*${SEED1}[[:space:]]+${SEED2}" "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+          grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then exit 1; fi
+
+      - name: Summarize Stage 3H-2 point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, os, re
+          rep,beam=os.environ['REP'],os.environ['BEAM']
+          p=Path(f'stage3h2_logs/stage3h2_{rep}_{beam}.log')
+          out=Path(f'stage3h2_{rep}_{beam}_summary.csv')
+          cols=['rep','beam','ncase','seed1','seed2','water_dose','water_unc_pct','chamber_dose','chamber_unc_pct','ratio','ratio_unc_abs','ratio_unc_pct','elapsed_s']
+          row={k:'NA' for k in cols}
+          row.update(rep=rep,beam=beam,ncase=os.environ['NCASE'],seed1=os.environ['SEED1'],seed2=os.environ['SEED2'])
+          if p.exists():
+              text=p.read_text(errors='replace')
+              def dose(name):
+                  m=re.findall(rf'^{name}\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s*%',text,re.M)
+                  return m[-1] if m else ('NA','NA')
+              row['water_dose'],row['water_unc_pct']=dose('dose_to_water')
+              row['chamber_dose'],row['chamber_unc_pct']=dose('chamber_in_water')
+              m=re.findall(r'^dose_to_water\s+chamber_in_water\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)',text,re.M)
+              if m:
+                  r,ur=map(float,m[-1]); row['ratio']=f'{r:.8g}'; row['ratio_unc_abs']=f'{ur:.8g}'; row['ratio_unc_pct']=f'{100*ur/r:.5f}'
+              me=re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s',text)
+              if me: row['elapsed_s']=me[-1]
+          with out.open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=cols); w.writeheader(); w.writerow(row)
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 3H-2 point
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage3h2-${{ matrix.rep }}-${{ matrix.beam }}
+          path: |
+            stage3h2_spectra.log
+            stage3h2_fidelity.log
+            stage3h2_configure.log
+            stage3h2_egs_chamber_build.log
+            stage3h2_inputs/*.egsinp
+            stage3h2_logs/*.log
+            stage3h2_*_summary.csv
+            spectra/benchmark_czarnecki2020_stage3f/spekcalc/${{ matrix.beam }}.ensrc
+          if-no-files-found: warn
+
+  summary:
+    name: Evaluate Stage 3H-2 Model B0 benchmark
+    needs: benchmark
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download point summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage3h2-*
+          path: stage3h2_downloads
+          merge-multiple: true
+
+      - name: Calculate B0 benchmark and shift from Model A
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, math
+          rows={}
+          for p in Path('stage3h2_downloads').glob('stage3h2_*_summary.csv'):
+              with p.open(newline='') as f: row=next(csv.DictReader(f))
+              rows[(row['rep'],row['beam'])]=row
+          pub=0.95355
+          h1=0.92797486
+          h1u=0.00489702
+          reps=[]
+          for rep in ('repA','repB'):
+              a=rows.get((rep,'CCRI100')); b=rows.get((rep,'CCRI250'))
+              if not a or not b or a['ratio']=='NA' or b['ratio']=='NA':
+                  raise SystemExit(f'Missing valid data for {rep}')
+              r100,u100=float(a['ratio']),float(a['ratio_unc_abs'])
+              r250,u250=float(b['ratio']),float(b['ratio_unc_abs'])
+              k=r100/r250
+              rel=math.sqrt((u100/r100)**2+(u250/r250)**2)
+              uk=k*rel
+              reps.append((rep,r100,u100,r250,u250,k,uk))
+          kA,uA=reps[0][5],reps[0][6]; kB,uB=reps[1][5],reps[1][6]
+          zrep=(kA-kB)/math.sqrt(uA*uA+uB*uB)
+          wA,wB=1/uA**2,1/uB**2
+          k=(wA*kA+wB*kB)/(wA+wB); u=math.sqrt(1/(wA+wB))
+          shift=100*(k/h1-1)
+          zshift=(k-h1)/math.sqrt(u*u+h1u*h1u)
+          fields=['estimate','r100','u_r100','r250','u_r250','k100_250','uk_abs','uk_pct','delta_vs_pub_pct','z_vs_pub','shift_vs_stage3h1_pct','z_shift_vs_stage3h1','note']
+          out=[]
+          for rep,r100,u100,r250,u250,kk,uk in reps:
+              out.append({'estimate':rep,'r100':f'{r100:.8f}','u_r100':f'{u100:.8f}','r250':f'{r250:.8f}','u_r250':f'{u250:.8f}','k100_250':f'{kk:.8f}','uk_abs':f'{uk:.8f}','uk_pct':f'{100*uk/kk:.4f}','delta_vs_pub_pct':f'{100*(kk/pub-1):+.4f}','z_vs_pub':f'{(kk-pub)/uk:+.3f}','shift_vs_stage3h1_pct':'NA','z_shift_vs_stage3h1':'NA','note':'independent 200M/beam Model B0 replicate'})
+          out.append({'estimate':'Stage3H2_B0_weighted','r100':'NA','u_r100':'NA','r250':'NA','u_r250':'NA','k100_250':f'{k:.8f}','uk_abs':f'{u:.8f}','uk_pct':f'{100*u/k:.4f}','delta_vs_pub_pct':f'{100*(k/pub-1):+.4f}','z_vs_pub':f'{(k-pub)/u:+.3f}','shift_vs_stage3h1_pct':f'{shift:+.4f}','z_shift_vs_stage3h1':f'{zshift:+.3f}','note':f'repA-repB consistency z={zrep:+.3f}; only public 23.0 mm sensitive length changed'})
+          with open('stage3h2_summary.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(out)
+          print(Path('stage3h2_summary.csv').read_text())
+          PY
+
+      - name: Upload Stage 3H-2 summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage3h2-summary
+          path: stage3h2_summary.csv
+          if-no-files-found: error
