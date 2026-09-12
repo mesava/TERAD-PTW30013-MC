@@ -1,0 +1,243 @@
+name: Stage 3H-4 Model B1 nominal high-stat confirmation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage3h4-modelB1-nominal-highstat.yml'
+      - 'scripts/build_stage3h4_b1_nominal.py'
+
+jobs:
+  benchmark:
+    name: ${{ matrix.rep }} / ${{ matrix.beam }} / 300M
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {rep: repA, beam: CCRI100, seed1: '811', seed2: '1811'}
+          - {rep: repA, beam: CCRI250, seed1: '812', seed2: '1812'}
+          - {rep: repB, beam: CCRI100, seed1: '813', seed2: '1813'}
+          - {rep: repB, beam: CCRI250, seed1: '814', seed2: '1814'}
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      REP: ${{ matrix.rep }}
+      BEAM: ${{ matrix.beam }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate and validate SpekCalc benchmark spectrum
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10' 'numpy>=1.26'
+          set -o pipefail
+          python scripts/generate_czarnecki_stage3f_spectra.py 2>&1 | tee stage3h4_spectra.log
+          test -s "spectra/benchmark_czarnecki2020_stage3f/spekcalc/${BEAM}.ensrc"
+          python scripts/stage3h0_spectrum_fidelity.py 2>&1 | tee stage3h4_fidelity.log
+          python - <<'PY'
+          import csv, os
+          beam=os.environ['BEAM']
+          rows=list(csv.DictReader(open('results/stage3h0_spectrum_fidelity.csv')))
+          r=next(x for x in rows if x['beam_id']==beam and x['mode']=='spekcalc')
+          assert abs(float(r['kerma_mean_error_percent'])) < 0.5
+          assert abs(float(r['hvl_error_percent'])) < 2.0
+          print('Selected benchmark surrogate:', r)
+          PY
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage3h4_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('Makefile')
+          text=p.read_text()
+          old='CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new=('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+               '$(EGS_SOURCEDIR)rad_compton1.mortran '
+               '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile')
+          p.write_text(text.replace(old,new,1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage3h4_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Build and self-check nominal Model B1 input
+        shell: bash
+        run: |
+          mkdir -p stage3h4_inputs stage3h4_logs
+          name="stage3h4_${REP}_${BEAM}"
+          python scripts/build_stage3h4_b1_nominal.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output "stage3h4_inputs/${name}.egsinp" \
+            --beam "$BEAM" --ncase "$NCASE" --nbatch "$NBATCH" \
+            --xcse "$XCSE" --rr "$RR" --seed1 "$SEED1" --seed2 "$SEED2"
+          grep -Fq 'set label = chamber_cavity 10 16 20' "stage3h4_inputs/${name}.egsinp"
+          grep -Fq 'set label = chamber_xcse_zone 0 5 6 10 11 12 13 15 16 17 18 19 20 21 22 23 25' "stage3h4_inputs/${name}.egsinp"
+          grep -Fq 'z-planes = -50 -2 18' "stage3h4_inputs/${name}.egsinp"
+          grep -Fq 'cavity mass = 7.832972283369083e-04' "stage3h4_inputs/${name}.egsinp"
+
+      - name: Run Stage 3H-4 high-stat point
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          name="stage3h4_${REP}_${BEAM}"
+          cp "spectra/benchmark_czarnecki2020_stage3f/spekcalc/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
+          cp "stage3h4_inputs/${name}.egsinp" "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3h4_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+          log="stage3h4_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Eq "initial seeds[[:space:]]*=[[:space:]]*${SEED1}[[:space:]]+${SEED2}" "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+          grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then exit 1; fi
+
+      - name: Summarize Stage 3H-4 point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, os, re
+          rep,beam=os.environ['REP'],os.environ['BEAM']
+          p=Path(f'stage3h4_logs/stage3h4_{rep}_{beam}.log')
+          out=Path(f'stage3h4_{rep}_{beam}_summary.csv')
+          cols=['rep','beam','ncase','seed1','seed2','ratio','ratio_unc_abs','ratio_unc_pct','elapsed_s']
+          row={k:'NA' for k in cols}
+          row.update(rep=rep,beam=beam,ncase=os.environ['NCASE'],seed1=os.environ['SEED1'],seed2=os.environ['SEED2'])
+          if p.exists():
+              text=p.read_text(errors='replace')
+              m=re.findall(r'^dose_to_water\s+chamber_in_water\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)',text,re.M)
+              if m:
+                  r,ur=map(float,m[-1]); row['ratio']=f'{r:.8g}'; row['ratio_unc_abs']=f'{ur:.8g}'; row['ratio_unc_pct']=f'{100*ur/r:.5f}'
+              me=re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s',text)
+              if me: row['elapsed_s']=me[-1]
+          with out.open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=cols); w.writeheader(); w.writerow(row)
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 3H-4 point
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage3h4-${{ matrix.rep }}-${{ matrix.beam }}
+          path: |
+            stage3h4_spectra.log
+            stage3h4_fidelity.log
+            stage3h4_configure.log
+            stage3h4_egs_chamber_build.log
+            stage3h4_inputs/*.egsinp
+            stage3h4_logs/*.log
+            stage3h4_*_summary.csv
+          if-no-files-found: warn
+
+  summary:
+    name: Evaluate Stage 3H-4 nominal B1 high-stat replication
+    needs: benchmark
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Stage 3H-4 point summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage3h4-*
+          path: stage3h4_downloads
+          merge-multiple: true
+      - name: Calculate replication result
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, math
+          rows={}
+          for p in Path('stage3h4_downloads').glob('stage3h4_*_summary.csv'):
+              with p.open(newline='') as f: r=next(csv.DictReader(f))
+              rows[(r['rep'],r['beam'])]=r
+          pub=0.95355
+          b0=0.93867384
+          screening=0.94489204
+          out=[]
+          vals=[]
+          for rep in ('repA','repB'):
+              a=rows[(rep,'CCRI100')]; b=rows[(rep,'CCRI250')]
+              if a['ratio']=='NA' or b['ratio']=='NA':
+                  raise SystemExit(f'Missing valid MC result for {rep}')
+              r100,u100=float(a['ratio']),float(a['ratio_unc_abs'])
+              r250,u250=float(b['ratio']),float(b['ratio_unc_abs'])
+              k=r100/r250
+              uk=k*math.sqrt((u100/r100)**2+(u250/r250)**2)
+              vals.append((k,uk))
+              out.append({'estimate':rep,'k100_250':f'{k:.8f}','uk_abs':f'{uk:.8f}','uk_pct':f'{100*uk/k:.4f}','delta_vs_pub_pct':f'{100*(k/pub-1):+.4f}','shift_vs_B0_pct':f'{100*(k/b0-1):+.4f}','shift_vs_screening_pct':f'{100*(k/screening-1):+.4f}','note':'independent 300M/beam nominal B1 replication'})
+          weights=[1/u**2 for k,u in vals]
+          kw=sum(w*k for w,(k,u) in zip(weights,vals))/sum(weights)
+          uw=math.sqrt(1/sum(weights))
+          zrep=(vals[0][0]-vals[1][0])/math.sqrt(vals[0][1]**2+vals[1][1]**2)
+          zpub=(kw-pub)/uw
+          out.append({'estimate':'weighted','k100_250':f'{kw:.8f}','uk_abs':f'{uw:.8f}','uk_pct':f'{100*uw/kw:.4f}','delta_vs_pub_pct':f'{100*(kw/pub-1):+.4f}','shift_vs_B0_pct':f'{100*(kw/b0-1):+.4f}','shift_vs_screening_pct':f'{100*(kw/screening-1):+.4f}','note':f'predeclared nominal B1; rep consistency z={zrep:+.3f}; z_vs_pub={zpub:+.3f}'})
+          fields=['estimate','k100_250','uk_abs','uk_pct','delta_vs_pub_pct','shift_vs_B0_pct','shift_vs_screening_pct','note']
+          with open('stage3h4_summary.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(out)
+          print(open('stage3h4_summary.csv').read())
+          PY
+      - name: Upload Stage 3H-4 summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage3h4-summary
+          path: stage3h4_summary.csv
