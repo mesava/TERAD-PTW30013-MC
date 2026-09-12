@@ -1,0 +1,6 @@
+estimate,tip_mm,k100_250,uk_abs,uk_pct,delta_vs_pub_pct,shift_vs_B0_pct,note
+tip1p0_repA,1.0,0.94075957,0.00890119,0.9462,-1.3413,+0.2222,independent Stage3H3B point
+tip1p5_repA,1.5,0.96239264,0.00910852,0.9464,+0.9273,+2.5268,independent Stage3H3B point
+tip1p5_repB,1.5,0.92863760,0.00877824,0.9453,-2.6126,-1.0692,independent Stage3H3B point
+tip1p5_weighted,1.5,0.94489204,0.00632069,0.6689,-0.9080,+0.6624,predeclared nominal; rep consistency z=+2.668
+tip2p0_repA,2.0,0.92910553,0.00879336,0.9464,-2.5635,-1.0193,independent Stage3H3B point
