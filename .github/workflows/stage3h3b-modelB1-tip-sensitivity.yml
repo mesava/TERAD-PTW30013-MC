@@ -155,17 +155,24 @@ jobs:
           if old not in text: raise SystemExit('XCSE label anchor missing')
           text=text.replace(old,new,1)
 
-          # Update the 15-value chamber enhancement list to 17 values while
-          # placeholders are still intact. Placeholder substitution occurs later.
-          old='''enhancement = @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
-                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
-                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@'''
-          new='''enhancement = @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
-                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
-                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
-                      @@XCSE@@ @@XCSE@@'''
-          if old not in text: raise SystemExit('enhancement anchor missing before placeholder substitution')
-          text=text.replace(old,new,1)
+          # Expand only the chamber_in_water XCSE enhancement list from 15 to
+          # 17 values. Avoid exact multiline matching: YAML/Python escaping can
+          # change whitespace while the underlying EGSnrc input remains valid.
+          marker='geometry name = chamber_in_water'
+          if marker not in text:
+              raise SystemExit('chamber calculation geometry missing')
+          head,chamber=text.split(marker,1)
+          body,tail=chamber.split(':stop calculation geometry:',1)
+          if 'enhance regions = chamber_xcse_zone' not in body:
+              raise SystemExit('chamber XCSE scoring block missing')
+          token='@@XCSE@@'
+          if body.count(token) != 15:
+              raise SystemExit(f'Unexpected chamber enhancement count: {body.count(token)}')
+          pos=body.rfind(token)+len(token)
+          body=body[:pos]+' \\\n                      @@XCSE@@ @@XCSE@@'+body[pos:]
+          if body.count(token) != 17:
+              raise SystemExit('Could not expand chamber enhancement list to 17 values')
+          text=head+marker+body+':stop calculation geometry:'+tail
 
           rho_air=1.2048e-3
           r=0.305; L=2.30; re=0.0575; Le=2.12
