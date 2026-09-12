@@ -1,42 +1,42 @@
 # TERAD-PTW30013-MC
 
-Monte Carlo project for deriving PTW 30013 chamber-specific beam-quality corrections for a TERAD kilovoltage therapy unit.
+Monte Carlo проект для определения chamber-specific коэффициентов коррекции по качеству пучка для ионизационной камеры PTW 30013, используемой на киловольтном рентгенотерапевтическом аппарате TERAD.
 
-> **Canonical task:** `docs/CANONICAL_MC_TASK.md` and `data/terad_clinical_geometries.csv` define the user-supplied TERAD beam qualities, all 12 applicator combinations and the real RW3 setup. These inputs take priority over exploratory benchmark branches.
+> **Каноническое ТЗ:** `docs/CANONICAL_MC_TASK.md` и `data/terad_clinical_geometries.csv` задают исходные пользовательские данные TERAD, все 12 комбинаций аппликаторов и реальную геометрию измерений в RW3. Эти данные имеют приоритет над всеми исследовательскими benchmark-ветками.
 
-> **Current milestone:** **Stage 3H-3 Model B1 tip sensitivity is running**. Stage 3H-2 Model B0 completed successfully and showed that replacing the Model A effective 21.8 mm sensitive length by the public 23.0 mm PTW value shifts the weighted CCRI100/250 benchmark upward by about 1.15%, but does not yet validate the chamber model.
+> **Текущий этап:** выполняется **Stage 3H-3 Model B1 tip sensitivity**. Stage 3H-2 Model B0 завершён успешно и показал, что замена эффективной sensitive length 21.8 mm из Model A на публичное значение PTW 23.0 mm повышает weighted CCRI100/250 benchmark примерно на 1.15%, но сама модель камеры пока ещё не валидирована.
 
-## Primary target
+## Основная цель
 
-For quality Q:
+Для качества пучка Q:
 
 `R_Q = (D_w / D_cav)_Q`
 
 `k_Q,Co = R_Q / R_Co`
 
-Individual chamber calibration anchor:
+Индивидуальный calibration anchor для камеры:
 
 `N_D,w(Co-60) = 5.389e7 Gy/C`
 
-for PTW 30013 SN 013488.
+для PTW 30013 SN 013488.
 
-The project keeps separate:
+В проекте отдельно рассматриваются:
 
-1. chamber beam-quality response;
-2. field/SSD/applicator response `k_g`;
-3. RW3-to-water effect;
-4. direct end-to-end checks in the actual RW3 geometry.
+1. отклик камеры в зависимости от качества пучка;
+2. влияние field / SSD / applicator через `k_g`;
+3. поправка RW3-to-water;
+4. прямые end-to-end проверки в реальной геометрии RW3.
 
-## Authoritative TERAD production baseline
+## Авторитетная исходная база TERAD
 
-| Beam | Tube voltage | Tube current | Measured HVL1 | Added clinical filter |
+| Beam | Напряжение | Ток | Измеренный HVL1 | Добавочный клинический фильтр |
 |---|---:|---:|---:|---|
 | Q120 | 120 kV | 10 mA | **0.224 mm Cu** | 4.0 mm Al |
 | Q140 | 140 kV | 10 mA | **0.410 mm Cu** | 0.2 mm Cu |
 | Q150 | 150 kV | 10 mA | **0.729 mm Cu** | 0.5 mm Cu |
 | Q200 | 200 kV | 7 mA | **1.452 mm Cu** | 1.0 mm Cu |
 
-Authoritative input files:
+Основные исходные файлы:
 
 - `docs/CANONICAL_MC_TASK.md`
 - `docs/TERAD_INPUT_BASELINE.md`
@@ -44,133 +44,133 @@ Authoritative input files:
 - `data/beam_qualities.csv`
 - `data/terad_clinical_geometries.csv`
 
-The temporary Stage 1R branch based on 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu is superseded and is not part of production MC.
+Временная ветка Stage 1R с HVL 0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu признана неверной и не относится к production MC.
 
-## The 12 real TERAD geometries
+## 12 реальных клинических геометрий TERAD
 
-For **every** Q120/Q140/Q150/Q200 beam, all three applicators are full production calculations:
+Для **каждого** качества Q120/Q140/Q150/Q200 полностью рассчитываются все три аппликатора:
 
-- F40 / SSD 40 cm / 6 x 8 cm2
-- F40 / SSD 40 cm / 4 x 15 cm2
-- F50 / SSD 50 cm / 8 x 10 cm2
+- F40 / SSD 40 cm / 6 × 8 cm²
+- F40 / SSD 40 cm / 4 × 15 cm²
+- F50 / SSD 50 cm / 8 × 10 cm²
 
-Therefore the final clinical task contains **12 kV/applicator combinations**.
+Итоговая клиническая задача содержит **12 комбинаций kV/applicator**.
 
-F50 is a real calculated configuration, not a substitute for the F40 applicators. After its own calculation it is also used as a convenient normalization denominator for relative `k_g` values.
+F50 является полноценной рассчитываемой клинической конфигурацией и не заменяет два F40. После собственного расчёта F50 дополнительно используется как удобный normalization denominator для относительных значений `k_g`.
 
-## User-supplied RW3 geometry
+## Реальная геометрия RW3
 
-- RW3 transverse size 30 x 30 cm2
-- PTW 30013 horizontal
-- chamber axis perpendicular to beam axis
-- chamber centre/reference point on central axis
-- stem directed right
-- chamber centre at 2.0 cm water-equivalent depth
-- 1.3 cm RW3 physically above the chamber body in the stated setup
-- approximately 10 cm RW3 downstream
-- lateral margin at least 10 cm
-- SSD set by F40/F50 applicator
-- applicator in contact with the RW3 surface
+- поперечный размер RW3: 30 × 30 cm²;
+- PTW 30013 расположена горизонтально;
+- ось камеры перпендикулярна оси пучка;
+- geometric centre / reference point камеры находится на central axis;
+- stem направлен вправо;
+- центр камеры находится на 2.0 cm water-equivalent depth;
+- в заданной экспериментальной геометрии физически над корпусом камеры расположено 1.3 cm RW3;
+- downstream запас RW3 — приблизительно 10 cm;
+- боковой запас — не менее 10 cm;
+- SSD задаётся аппликатором F40/F50;
+- аппликатор прижат к поверхности RW3.
 
-All 12 configurations will be calculated directly in RW3 in addition to the factorised water/geometry/RW3 analysis.
+Все 12 конфигураций будут рассчитаны непосредственно в RW3 в дополнение к раздельному анализу water / geometry / RW3.
 
-## Stage 0 — EGSnrc infrastructure ✅
+## Stage 0 — инфраструктура EGSnrc ✅
 
-Pinned official NRC EGSnrc commit:
+Закреплённый commit официального NRC EGSnrc:
 
 `f4d029f625a6c96ef3456e0b6d91d46ffce613e7`
 
-Accepted benchmark transport/VRT architecture includes low-energy photon transport, Radiative Compton, exact BCA, IPSS/TmpPhsp, XCSE 64 and Russian Roulette survival 1/64.
+Принятая benchmark transport/VRT архитектура включает low-energy photon transport, Radiative Compton, exact BCA, IPSS/TmpPhsp, XCSE 64 и Russian Roulette survival 1/64.
 
-## Stage 1 — TERAD production spectra ✅ accepted first pass
+## Stage 1 — production spectra TERAD ✅ принят первый вариант
 
-First-pass TERAD spectrum model uses SpekPy 2.5.4 with W reflection target, nominal 20 degree anode angle, `kqp` physics, known clinical filters and non-negative equivalent-Al nuisance filtration.
+Первичная модель спектров TERAD использует SpekPy 2.5.4, W reflection target, nominal anode angle 20°, `kqp` physics, известные клинические фильтры и неотрицательную equivalent-Al nuisance filtration.
 
-| Beam | Target HVL1 | Final HVL1 | Error |
+| Beam | Target HVL1 | Final HVL1 | Ошибка |
 |---|---:|---:|---:|
 | Q120 | 0.224000 | 0.224000 | 0.000% |
 | Q140 | 0.410000 | 0.410000 | 0.000% |
 | Q150 | 0.729000 | 0.729000 | 0.000% |
 | Q200 | 1.452000 | 1.452955 | +0.0658% |
 
-Persistent record: `results/spekpy_fit_summary.csv`.
+Постоянно сохранённый результат: `results/spekpy_fit_summary.csv`.
 
-## Stage 2 — PTW 30013 Model A ❌ not benchmark-validated
+## Stage 2 — PTW 30013 Model A ❌ benchmark не пройден
 
-Model A is a simplified public/aggregate surrogate:
+Model A — упрощённая public/aggregate surrogate геометрия:
 
-- air-cavity radius 3.05 mm
-- effective internal cavity length 21.80 mm
-- Al central-electrode radius 0.575 mm
-- retained electrode length 21.20 mm
-- graphite 0.09 mm
-- PMMA 0.335 mm
+- air-cavity radius = 3.05 mm;
+- effective internal cavity length = 21.80 mm;
+- Al central-electrode radius = 0.575 mm;
+- retained electrode length = 21.20 mm;
+- graphite = 0.09 mm;
+- PMMA = 0.335 mm.
 
-It does not model the real proprietary tip, guard, insulator, electrode base or stem transition.
+Model A не воспроизводит реальную proprietary геометрию tip, guard, insulator, electrode base и stem transition.
 
-## Stage 3 — published PTW 30013 benchmark
+## Stage 3 — опубликованный benchmark PTW 30013
 
-Published CCRI100/CCRI250 target midpoint:
+Опубликованный midpoint для CCRI100/CCRI250:
 
 `k100,250 = 0.95355`
 
-with `R_Q = D_w / D_cav`.
+при определении `R_Q = D_w / D_cav`.
 
 ### Stage 3G — high-stat `kqp` / Model A ❌
 
 Run `34572944985`:
 
-| Estimate | k100,250 | u(k) | delta vs target |
+| Оценка | k100,250 | u(k) | Отклонение от target |
 |---|---:|---:|---:|
 | repA | 0.928161 | 0.005668 | -2.663% |
 | repB | 0.927563 | 0.005660 | -2.725% |
 | weighted | **0.927861** | **0.004005** | **-2.694%** |
 
-The two 300M-per-beam replications agree, but the weighted result differs from the published target by about 6.4 sigma.
+Две независимые реплики по 300M/beam согласуются между собой, но weighted result отличается от опубликованного target примерно на 6.4 sigma. Увеличение числа histories для той же комбинации `kqp`/Model A нецелесообразно.
 
 ### Stage 3H-0 — spectrum fidelity ✅
 
-Persistent result: `results/stage3h0_spectrum_fidelity.csv`.
+Постоянно сохранённый результат: `results/stage3h0_spectrum_fidelity.csv`.
 
-`spekcalc` was selected as the primary benchmark surrogate because it best reproduces both published Cu HVL and kerma-weighted mean energy across CCRI100/135/180/250.
+`spekcalc` выбран как основной benchmark spectrum surrogate, поскольку лучше других вариантов одновременно воспроизводит опубликованные Cu HVL и kerma-weighted mean energy для CCRI100/135/180/250.
 
 ### Stage 3H-1 — paper-faithful SpekCalc + air48 / Model A ❌
 
-Run `34580291967` completed successfully with two independent 200M-per-beam replications.
+Run `34580291967` завершён успешно с двумя независимыми репликами по 200M/beam.
 
-Persistent result: `results/stage3h1_summary.csv`.
+Постоянно сохранённый результат: `results/stage3h1_summary.csv`.
 
-| Estimate | k100,250 | u(k) | delta vs target |
+| Оценка | k100,250 | u(k) | Отклонение от target |
 |---|---:|---:|---:|
 | repA | 0.932799 | 0.006960 | -2.176% |
 | repB | 0.923246 | 0.006891 | -3.178% |
 | weighted | **0.92797486** | **0.00489702** | **-2.6821%** |
 
-The replications are mutually consistent (`z = +0.975`). The paper-faithful spectrum/air treatment therefore does not remove the Model A discrepancy.
+Реплики согласуются между собой (`z = +0.975`). Следовательно, более точное воспроизведение spectrum/air geometry не устраняет систематическое расхождение Model A.
 
-### Stage 3H-2 — Model B0 public sensitive length 🟠 improved, not yet accepted
+### Stage 3H-2 — Model B0: публичная sensitive length 🟠 улучшение, но модель ещё не принята
 
-Run `34597238397` completed successfully.
+Run `34597238397` завершён успешно.
 
-Persistent result: `results/stage3h2_summary.csv`.
+Постоянно сохранённый результат: `results/stage3h2_summary.csv`.
 
-B0 changes exactly one confirmed public constraint relative to Model A:
+B0 меняет только одно подтверждённое публичное геометрическое условие относительно Model A:
 
-- sensitive length: **21.8 mm -> 23.0 mm**.
+- sensitive length: **21.8 mm → 23.0 mm**.
 
-The 21.2 mm electrode axial length is retained only as a legacy computational assumption and is not claimed as a manufacturer dimension.
+Axial length центрального электрода 21.2 mm пока сохраняется только как legacy computational assumption и не трактуется как реальный manufacturer dimension.
 
-| Estimate | k100,250 | u(k) | delta vs target |
+| Оценка | k100,250 | u(k) | Отклонение от target |
 |---|---:|---:|---:|
 | repA | 0.931782 | 0.006809 | -2.283% |
 | repB | 0.945731 | 0.006890 | -0.820% |
 | weighted | **0.93867384** | **0.00484302** | **-1.560%** |
 
-The replications are reasonably consistent (`z = -1.440`). Relative to Stage 3H-1 Model A, B0 shifts the weighted result by **+1.1529%**, closing about 42% of the previous gap, but the result remains about 3.07 sigma below the published midpoint.
+Реплики приемлемо согласуются (`z = -1.440`). Относительно Stage 3H-1 Model A переход к B0 сдвигает weighted result на **+1.1529%** и закрывает около 42% прежнего расхождения, но результат всё ещё примерно на 3.07 sigma ниже опубликованного midpoint.
 
-Documentation: `docs/STAGE3H2_MODEL_B0.md`.
+Документация: `docs/STAGE3H2_MODEL_B0.md`.
 
-### Stage 3H-3 — Model B1 tip sensitivity 🟡 RUNNING
+### Stage 3H-3 — Model B1 tip sensitivity 🟡 выполняется
 
 Workflow:
 
@@ -180,67 +180,67 @@ Run:
 
 `34690628930`
 
-Documentation:
+Документация:
 
 `docs/STAGE3H3_MODEL_B1_TIP.md`
 
-B1 preserves the B0 23.0 mm sensitive volume and introduces an asymmetric PMMA tip surrogate on the physical tip side.
+B1 сохраняет sensitive volume Model B0 с length 23.0 mm и добавляет асимметричный PMMA tip surrogate со стороны физического tip камеры.
 
-Public constraints provide:
+Публичные ограничения дают:
 
 - sensitive length = 23.0 mm;
-- reference point = 13.0 mm from the chamber tip.
+- reference point = 13.0 mm от tip камеры.
 
-Therefore the independently derived nominal tip-side distance is:
+Отсюда независимо получается номинальное расстояние со стороны tip:
 
 `13.0 - 23.0/2 = 1.5 mm`.
 
-Predeclared B1 family:
+Заранее заданное семейство B1:
 
-| case | PMMA tip surrogate | role |
+| case | PMMA tip surrogate | Назначение |
 |---|---:|---|
-| tip1p0 | 1.0 mm | lower sensitivity bound |
+| tip1p0 | 1.0 mm | нижняя граница sensitivity |
 | tip1p5 | **1.5 mm** | nominal public-derived geometry |
-| tip2p0 | 2.0 mm | upper sensitivity bound |
+| tip2p0 | 2.0 mm | верхняя граница sensitivity |
 
-The nominal 1.5 mm case is fixed before results and is calculated with **two independent 120M/beam replications**. The 1.0 and 2.0 mm cases are 120M/beam screening bounds. No tip thickness will be selected simply because it reproduces 0.95355.
+Номинальный вариант 1.5 mm определён до получения результатов и рассчитывается с **двумя независимыми репликами по 120M/beam**. Варианты 1.0 и 2.0 mm используются как screening bounds по 120M/beam. Ни одна tip thickness не будет выбрана только потому, что она лучше воспроизводит 0.95355.
 
-PMMA is used only as a first-order tip surrogate because it is the public outer-wall material. The true rounded tip shape, axial graphite continuation, adhesive, guard and insulator details remain unknown and are not represented as manufacturer truth.
+PMMA используется лишь как first-order tip surrogate, поскольку это публично известный материал наружной стенки. Реальная rounded tip shape, axial graphite continuation, adhesive, guard и insulator остаются неизвестными и не выдаются за manufacturer truth.
 
-If the independently defined nominal B1 geometry remains discrepant, the next declared steps are guard/insulator sensitivity and then stem-transition sensitivity.
+Если заранее определённая nominal B1 geometry останется несовместимой с benchmark, следующие объявленные этапы — guard/insulator sensitivity и затем stem-transition sensitivity.
 
-See also:
+См. также:
 
 - `docs/PTW30013_MODEL_B_PUBLIC_PLAN.md`
 - `data/ptw30013_modelB_public_constraints.csv`
 
-## Current project status
+## Текущий статус проекта
 
-| Stage | Description | Status |
+| Stage | Содержание | Статус |
 |---:|---|---|
-| 0 | EGSnrc / egs_chamber infrastructure | ✅ complete |
-| 1 | TERAD production spectra | ✅ accepted first pass |
-| 2 | PTW 30013 Model A | ❌ benchmark not validated |
+| 0 | EGSnrc / egs_chamber infrastructure | ✅ завершено |
+| 1 | production spectra TERAD | ✅ принят первый вариант |
+| 2 | PTW 30013 Model A | ❌ benchmark не пройден |
 | 3G | high-stat `kqp`/Model A benchmark | ❌ systematic fail |
-| 3H-0 | spectrum fidelity | ✅ complete; SpekCalc selected |
+| 3H-0 | spectrum fidelity | ✅ завершено; выбран SpekCalc |
 | 3H-1 | paper-faithful SpekCalc + air48 / Model A | ❌ systematic fail |
-| 3H-2 | Model B0 public-sensitive-length benchmark | 🟠 improved; not accepted |
-| 3H-3 | Model B1 tip sensitivity | 🟡 running |
-| 4 | Co-60 reference ratio | ⏸ blocked by benchmark acceptance |
-| 5 | water calculations for all 12 TERAD configurations | ⏸ blocked by benchmark acceptance |
-| 6 | TERAD spectrum/chamber sensitivity | pending |
-| 7 | derive geometry-response ratios `k_g` | pending |
-| 8 | RW3-to-water + 12 direct RW3 end-to-end calculations | pending |
-| 9 | final coefficients and uncertainty budget | pending |
+| 3H-2 | Model B0 public-sensitive-length benchmark | 🟠 улучшение; не принят |
+| 3H-3 | Model B1 tip sensitivity | 🟡 выполняется |
+| 4 | Co-60 reference ratio | ⏸ заблокирован до принятия benchmark |
+| 5 | water calculations для всех 12 TERAD configurations | ⏸ заблокирован до принятия benchmark |
+| 6 | TERAD spectrum/chamber sensitivity | ожидает выполнения |
+| 7 | определение geometry-response ratios `k_g` | ожидает выполнения |
+| 8 | RW3-to-water + 12 direct RW3 end-to-end calculations | ожидает выполнения |
+| 9 | итоговые коэффициенты и uncertainty budget | ожидает выполнения |
 
-## Production path after benchmark acceptance
+## Путь к production calculations после принятия benchmark
 
-1. calculate `R_Co` in the Co-60 certificate reference geometry;
-2. calculate water `R_Q` for all **12** TERAD kVp/applicator combinations;
-3. calculate chamber-specific `k_Q,Co` results while retaining explicit results for all three applicators;
-4. derive relative geometry-response ratios `k_g` only as bookkeeping from already calculated absolute responses;
-5. quantify TERAD spectrum/chamber-model sensitivity;
-6. model matched RW3 geometries for all 12 configurations;
-7. quantify RW3-to-water effects;
-8. perform direct end-to-end RW3 MC for all 12 configurations;
-9. combine final coefficients and uncertainty budget.
+1. рассчитать `R_Co` в Co-60 certificate reference geometry;
+2. рассчитать water `R_Q` для всех **12** комбинаций TERAD kVp/applicator;
+3. определить chamber-specific `k_Q,Co`, сохранив явные абсолютные результаты для всех трёх аппликаторов;
+4. рассчитать относительные geometry-response ratios `k_g` только как способ представления уже рассчитанных абсолютных откликов;
+5. оценить TERAD spectrum/chamber-model sensitivity;
+6. смоделировать matched RW3 geometry для всех 12 конфигураций;
+7. определить RW3-to-water effect;
+8. выполнить direct end-to-end RW3 MC для всех 12 конфигураций;
+9. объединить итоговые коэффициенты и uncertainty budget.
