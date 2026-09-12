@@ -1,0 +1,4 @@
+estimate,r100,u_r100,r250,u_r250,k100_250,uk_abs,uk_pct,delta_vs_pub_pct,z_vs_pub,shift_vs_stage3h1_pct,z_shift_vs_stage3h1,note
+repA,1.01554000,0.00548000,1.08989000,0.00537000,0.93178211,0.00680869,0.7307,-2.2828,-3.197,NA,NA,independent 200M/beam Model B0 replicate
+repB,1.02139000,0.00550000,1.08000000,0.00530000,0.94573148,0.00689015,0.7286,-0.8199,-1.135,NA,NA,independent 200M/beam Model B0 replicate
+Stage3H2_B0_weighted,NA,NA,NA,NA,0.93867384,0.00484302,0.5159,-1.5601,-3.072,+1.1529,+1.553,repA-repB consistency z=-1.440; only public 23.0 mm sensitive length changed
