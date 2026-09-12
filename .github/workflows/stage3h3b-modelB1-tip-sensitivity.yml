@@ -1,0 +1,350 @@
+name: Stage 3H-3B Model B1 tip sensitivity corrected
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage3h3b-modelB1-tip-sensitivity.yml'
+
+jobs:
+  benchmark:
+    name: ${{ matrix.case }} / ${{ matrix.rep }} / ${{ matrix.beam }} / 120M
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - {case: tip1p0, tip_cm: '0.10', rep: repA, beam: CCRI100, seed1: '711', seed2: '1711'}
+          - {case: tip1p0, tip_cm: '0.10', rep: repA, beam: CCRI250, seed1: '712', seed2: '1712'}
+          - {case: tip1p5, tip_cm: '0.15', rep: repA, beam: CCRI100, seed1: '713', seed2: '1713'}
+          - {case: tip1p5, tip_cm: '0.15', rep: repA, beam: CCRI250, seed1: '714', seed2: '1714'}
+          - {case: tip1p5, tip_cm: '0.15', rep: repB, beam: CCRI100, seed1: '715', seed2: '1715'}
+          - {case: tip1p5, tip_cm: '0.15', rep: repB, beam: CCRI250, seed1: '716', seed2: '1716'}
+          - {case: tip2p0, tip_cm: '0.20', rep: repA, beam: CCRI100, seed1: '717', seed2: '1717'}
+          - {case: tip2p0, tip_cm: '0.20', rep: repA, beam: CCRI250, seed1: '718', seed2: '1718'}
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '120000000'
+      NBATCH: '20'
+      XCSE: '64'
+      RR: '64'
+      CASE: ${{ matrix.case }}
+      TIP_CM: ${{ matrix.tip_cm }}
+      REP: ${{ matrix.rep }}
+      BEAM: ${{ matrix.beam }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate and validate SpekCalc benchmark spectrum
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10' 'numpy>=1.26'
+          set -o pipefail
+          python scripts/generate_czarnecki_stage3f_spectra.py 2>&1 | tee stage3h3b_spectra.log
+          test -s "spectra/benchmark_czarnecki2020_stage3f/spekcalc/${BEAM}.ensrc"
+          python scripts/stage3h0_spectrum_fidelity.py 2>&1 | tee stage3h3b_fidelity.log
+          python - <<'PY'
+          import csv, os
+          beam=os.environ['BEAM']
+          rows=list(csv.DictReader(open('results/stage3h0_spectrum_fidelity.csv')))
+          r=next(x for x in rows if x['beam_id']==beam and x['mode']=='spekcalc')
+          assert abs(float(r['kerma_mean_error_percent'])) < 0.5
+          assert abs(float(r['hvl_error_percent'])) < 2.0
+          print('Selected benchmark surrogate:', r)
+          PY
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage3h3b_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('Makefile')
+          text=p.read_text()
+          old='CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new=('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+               '$(EGS_SOURCEDIR)rad_compton1.mortran '
+               '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile')
+          p.write_text(text.replace(old,new,1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage3h3b_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Build and self-check Model B1 input
+        shell: bash
+        run: |
+          mkdir -p stage3h3b_inputs stage3h3b_logs
+          name="stage3h3b_${CASE}_${REP}_${BEAM}"
+          cp inputs/stage3b_czarnecki_modelA_vrt.template.egsinp "stage3h3b_inputs/${name}.egsinp"
+
+          python - "stage3h3b_inputs/${name}.egsinp" <<'PY'
+          from pathlib import Path
+          import math, os, sys
+          p=Path(sys.argv[1])
+          text=p.read_text()
+          tip=float(os.environ['TIP_CM'])
+          if tip not in (0.10,0.15,0.20):
+              raise SystemExit('Unexpected predeclared tip thickness')
+
+          # B0: public sensitive length 23.0 mm instead of Model A 21.8 mm.
+          if text.count('thickness = 0.03') != 2:
+              raise SystemExit('Unexpected Model A end-gap structure')
+          text=text.replace('thickness = 0.03','thickness = 0.09')
+          text=text.replace('axis = 2.09 0 0  -1 0 0','axis = 2.15 0 0  -1 0 0',1)
+          text=text.replace('positions = -1.09 1.09','positions = -1.15 1.15',1)
+
+          # B1: first-order asymmetric PMMA tip surrogate on +x tip side.
+          # Sensitive edge remains x=+1.15 cm. For nominal tip=0.15 cm,
+          # external tip position is +1.30 cm = public 13 mm reference distance.
+          old_layer='''        :start layer:\n            thickness = 1.0\n            top radii    = 1.3475\n            bottom radii = 1.3475\n            media = WATER_1KEV\n        :stop layer:\n\n        :start layer:\n            thickness = 0.09\n'''
+          water_pre=1.0-tip
+          new_layer=f'''        :start layer:\n            thickness = {water_pre:.2f}\n            top radii    = 1.3475\n            bottom radii = 1.3475\n            media = WATER_1KEV\n        :stop layer:\n\n        :start layer:\n            thickness = {tip:.2f}\n            top radii    = 0.3475 1.3475\n            bottom radii = 0.3475 1.3475\n            media = PMMA_1KEV WATER_1KEV\n        :stop layer:\n\n        :start layer:\n            thickness = 0.09\n'''
+          if old_layer not in text:
+              raise SystemExit('Could not insert B1 tip layer')
+          text=text.replace(old_layer,new_layer,1)
+
+          # One added two-region layer shifts all downstream ConeStack regions by +2.
+          old='set label = chamber_cavity 5 11 15'
+          new='set label = chamber_cavity 7 13 17'
+          if old not in text: raise SystemExit('cavity label anchor missing')
+          text=text.replace(old,new,1)
+          old='set label = chamber_xcse_zone 0 5 6 7 8 10 11 12 13 14 15 16 17 18 20'
+          new='set label = chamber_xcse_zone 0 1 2 7 8 9 10 12 13 14 15 16 17 18 19 20 22'
+          if old not in text: raise SystemExit('XCSE label anchor missing')
+          text=text.replace(old,new,1)
+
+          # Update the 15-value chamber enhancement list to 17 values while
+          # placeholders are still intact. Placeholder substitution occurs later.
+          old='''enhancement = @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
+                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
+                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@'''
+          new='''enhancement = @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
+                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
+                      @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ @@XCSE@@ \\
+                      @@XCSE@@ @@XCSE@@'''
+          if old not in text: raise SystemExit('enhancement anchor missing before placeholder substitution')
+          text=text.replace(old,new,1)
+
+          rho_air=1.2048e-3
+          r=0.305; L=2.30; re=0.0575; Le=2.12
+          net=math.pi*r*r*L-math.pi*re*re*Le
+          mass=net*rho_air
+          old='cavity mass = 7.410453757123e-4'
+          new=f'cavity mass = {mass:.15e}'
+          if old not in text: raise SystemExit('Model A cavity mass anchor missing')
+          text=text.replace(old,new,1)
+
+          # Czarnecki geometry: first 50 cm air folded into spectrum, remaining
+          # 48 cm explicitly transported from z=-50 to water surface z=-2 cm.
+          marker='name = water_phantom'
+          if marker not in text: raise SystemExit('water phantom missing')
+          head,tail=text.split(marker,1)
+          if 'z-planes = -2 18' not in tail: raise SystemExit('water z-plane anchor missing')
+          tail=tail.replace('z-planes = -2 18','z-planes = -50 -2 18',1)
+          oldmedia='media = WATER_1KEV\n        :stop media input:'
+          newmedia='media = AIR_1KEV WATER_1KEV\n            set medium = 1 1\n        :stop media input:'
+          if oldmedia not in tail: raise SystemExit('water phantom media anchor missing')
+          tail=tail.replace(oldmedia,newmedia,1)
+          text=head+marker+tail
+
+          # Substitute workflow tokens only after all geometry edits.
+          replacements={
+              '@@BEAM@@':os.environ['BEAM'],
+              '@@XCSE@@':os.environ['XCSE'],
+              '@@RR@@':os.environ['RR'],
+              '@@NCASE@@':os.environ['NCASE'],
+          }
+          for a,b in replacements.items(): text=text.replace(a,b)
+          text=text.replace('nbatch = 10',f"nbatch = {os.environ['NBATCH']}",1)
+
+          rng=(
+              ':start rng definition:\n'
+              '    type = ranmar\n'
+              f"    initial seeds = {os.environ['SEED1']} {os.environ['SEED2']}\n"
+              ':stop rng definition:\n\n'
+          )
+          marker=':start run control:'
+          if marker not in text: raise SystemExit('run control anchor missing')
+          text=text.replace(marker,rng+marker,1)
+          if '@@' in text: raise SystemExit('Unresolved template token remains')
+          p.write_text(text)
+
+          print(f'B1 case={os.environ["CASE"]} tip={tip:.2f} cm')
+          print(f'external tip position = {1.15+tip:.2f} cm')
+          print(f'net air volume = {net:.12f} cm3')
+          print(f'cavity mass = {mass:.15e} g')
+          assert abs(net-0.6501471018732639) < 1e-12
+          assert abs(mass-7.832972283369083e-4) < 1e-15
+          if abs(tip-0.15)<1e-12:
+              assert abs((1.15+tip)-1.30) < 1e-12
+          PY
+
+          grep -Fq 'set label = chamber_cavity 7 13 17' "stage3h3b_inputs/${name}.egsinp"
+          grep -Fq 'set label = chamber_xcse_zone 0 1 2 7 8 9 10 12 13 14 15 16 17 18 19 20 22' "stage3h3b_inputs/${name}.egsinp"
+          grep -Fq 'cavity mass = 7.832972283369083e-04' "stage3h3b_inputs/${name}.egsinp"
+          grep -Fq 'z-planes = -50 -2 18' "stage3h3b_inputs/${name}.egsinp"
+          test "$(grep -A4 'enhance regions = chamber_xcse_zone' "stage3h3b_inputs/${name}.egsinp" | grep -o "${XCSE}" | wc -l)" -eq 17
+
+      - name: Run Stage 3H-3B B1 point
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          name="stage3h3b_${CASE}_${REP}_${BEAM}"
+          cp "spectra/benchmark_czarnecki2020_stage3f/spekcalc/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
+          cp "stage3h3b_inputs/${name}.egsinp" "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage3h3b_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+          log="stage3h3b_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Eq "initial seeds[[:space:]]*=[[:space:]]*${SEED1}[[:space:]]+${SEED2}" "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+          grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then exit 1; fi
+
+      - name: Summarize Stage 3H-3B point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, os, re
+          case,rep,beam=os.environ['CASE'],os.environ['REP'],os.environ['BEAM']
+          p=Path(f'stage3h3b_logs/stage3h3b_{case}_{rep}_{beam}.log')
+          out=Path(f'stage3h3b_{case}_{rep}_{beam}_summary.csv')
+          cols=['case','tip_cm','rep','beam','ncase','seed1','seed2','ratio','ratio_unc_abs','ratio_unc_pct','elapsed_s']
+          row={k:'NA' for k in cols}
+          row.update(case=case,tip_cm=os.environ['TIP_CM'],rep=rep,beam=beam,ncase=os.environ['NCASE'],seed1=os.environ['SEED1'],seed2=os.environ['SEED2'])
+          if p.exists():
+              text=p.read_text(errors='replace')
+              m=re.findall(r'^dose_to_water\s+chamber_in_water\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)',text,re.M)
+              if m:
+                  r,ur=map(float,m[-1]); row['ratio']=f'{r:.8g}'; row['ratio_unc_abs']=f'{ur:.8g}'; row['ratio_unc_pct']=f'{100*ur/r:.5f}'
+              me=re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s',text)
+              if me: row['elapsed_s']=me[-1]
+          with out.open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=cols); w.writeheader(); w.writerow(row)
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 3H-3B point
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage3h3b-${{ matrix.case }}-${{ matrix.rep }}-${{ matrix.beam }}
+          path: |
+            stage3h3b_spectra.log
+            stage3h3b_fidelity.log
+            stage3h3b_configure.log
+            stage3h3b_egs_chamber_build.log
+            stage3h3b_inputs/*.egsinp
+            stage3h3b_logs/*.log
+            stage3h3b_*_summary.csv
+          if-no-files-found: warn
+
+  summary:
+    name: Evaluate Stage 3H-3B B1 tip sensitivity
+    needs: benchmark
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download point summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage3h3b-*
+          path: stage3h3b_downloads
+          merge-multiple: true
+      - name: Calculate tip family benchmark
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, math
+          rows={}
+          for p in Path('stage3h3b_downloads').glob('stage3h3b_*_summary.csv'):
+              with p.open(newline='') as f: r=next(csv.DictReader(f))
+              rows[(r['case'],r['rep'],r['beam'])]=r
+          pub=0.95355
+          b0=0.93867384
+          out=[]
+          def calc(case,rep):
+              a=rows[(case,rep,'CCRI100')]; b=rows[(case,rep,'CCRI250')]
+              if a['ratio']=='NA' or b['ratio']=='NA':
+                  raise SystemExit(f'Missing valid MC result for {case}/{rep}')
+              r100,u100=float(a['ratio']),float(a['ratio_unc_abs'])
+              r250,u250=float(b['ratio']),float(b['ratio_unc_abs'])
+              k=r100/r250
+              uk=k*math.sqrt((u100/r100)**2+(u250/r250)**2)
+              return k,uk
+          for case,tip,reps in [('tip1p0',0.10,['repA']),('tip1p5',0.15,['repA','repB']),('tip2p0',0.20,['repA'])]:
+              vals=[]
+              for rep in reps:
+                  k,u=calc(case,rep); vals.append((k,u))
+                  out.append({'estimate':f'{case}_{rep}','tip_mm':f'{10*tip:.1f}','k100_250':f'{k:.8f}','uk_abs':f'{u:.8f}','uk_pct':f'{100*u/k:.4f}','delta_vs_pub_pct':f'{100*(k/pub-1):+.4f}','shift_vs_B0_pct':f'{100*(k/b0-1):+.4f}','note':'independent Stage3H3B point'})
+              if len(vals)==2:
+                  w=[1/u**2 for k,u in vals]
+                  k=sum(wi*ki for wi,(ki,ui) in zip(w,vals))/sum(w)
+                  u=math.sqrt(1/sum(w))
+                  zrep=(vals[0][0]-vals[1][0])/math.sqrt(vals[0][1]**2+vals[1][1]**2)
+                  out.append({'estimate':f'{case}_weighted','tip_mm':f'{10*tip:.1f}','k100_250':f'{k:.8f}','uk_abs':f'{u:.8f}','uk_pct':f'{100*u/k:.4f}','delta_vs_pub_pct':f'{100*(k/pub-1):+.4f}','shift_vs_B0_pct':f'{100*(k/b0-1):+.4f}','note':f'predeclared nominal; rep consistency z={zrep:+.3f}'})
+          fields=['estimate','tip_mm','k100_250','uk_abs','uk_pct','delta_vs_pub_pct','shift_vs_B0_pct','note']
+          with open('stage3h3b_summary.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(out)
+          print(open('stage3h3b_summary.csv').read())
+          PY
+      - name: Upload Stage 3H-3B summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage3h3b-summary
+          path: stage3h3b_summary.csv
