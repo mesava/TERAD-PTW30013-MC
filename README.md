@@ -4,7 +4,7 @@ Monte Carlo project for deriving PTW 30013 chamber-specific beam-quality correct
 
 > **Canonical task:** `docs/CANONICAL_MC_TASK.md` and `data/terad_clinical_geometries.csv` define the user-supplied TERAD beam qualities, all 12 applicator combinations and the real RW3 setup. These inputs take priority over exploratory benchmark branches.
 
-> **Current milestone:** **Stage 3H-2 Model B0 is running**. Stage 3H-1 confirmed that a paper-faithful SpekCalc spectrum plus explicit 48 cm air transport does not validate the simplified PTW 30013 Model A.
+> **Current milestone:** **Stage 3H-3 Model B1 tip sensitivity is running**. Stage 3H-2 Model B0 completed successfully and showed that replacing the Model A effective 21.8 mm sensitive length by the public 23.0 mm PTW value shifts the weighted CCRI100/250 benchmark upward by about 1.15%, but does not yet validate the chamber model.
 
 ## Primary target
 
@@ -148,41 +148,66 @@ Persistent result: `results/stage3h1_summary.csv`.
 
 The replications are mutually consistent (`z = +0.975`). The paper-faithful spectrum/air treatment therefore does not remove the Model A discrepancy.
 
-## Stage 3H-2 — Model B0 public-sensitive-length test 🟡 RUNNING
+### Stage 3H-2 — Model B0 public sensitive length 🟠 improved, not yet accepted
 
-Workflow:
+Run `34597238397` completed successfully.
 
-`.github/workflows/stage3h2-modelB0-public-length.yml`
+Persistent result: `results/stage3h2_summary.csv`.
 
-Run:
-
-`34597238397`
-
-Documentation:
-
-`docs/STAGE3H2_MODEL_B0.md`
-
-Model B0 changes exactly one fixed public constraint relative to Model A:
+B0 changes exactly one confirmed public constraint relative to Model A:
 
 - sensitive length: **21.8 mm -> 23.0 mm**.
 
-The public 3.05 mm sensitive radius, 0.09 mm graphite, 0.335 mm PMMA and 1.15 mm Al electrode diameter are retained.
+The 21.2 mm electrode axial length is retained only as a legacy computational assumption and is not claimed as a manufacturer dimension.
 
-For this isolated B0 test only, the 21.2 mm electrode axial length is retained as a **legacy computational assumption**, not as a claimed PTW manufacturer dimension.
+| Estimate | k100,250 | u(k) | delta vs target |
+|---|---:|---:|---:|
+| repA | 0.931782 | 0.006809 | -2.283% |
+| repB | 0.945731 | 0.006890 | -0.820% |
+| weighted | **0.93867384** | **0.00484302** | **-1.560%** |
 
-Modelled net air volume:
+The replications are reasonably consistent (`z = -1.440`). Relative to Stage 3H-1 Model A, B0 shifts the weighted result by **+1.1529%**, closing about 42% of the previous gap, but the result remains about 3.07 sigma below the published midpoint.
 
-`0.6501471018732639 cm3`
+Documentation: `docs/STAGE3H2_MODEL_B0.md`.
 
-Modelled cavity mass:
+### Stage 3H-3 — Model B1 tip sensitivity 🟡 RUNNING
 
-`7.832972283369083e-4 g`
+Workflow:
 
-Benchmark conditions are otherwise identical to Stage 3H-1: SpekCalc, published filters/Emin, explicit air48, same field/water geometry, same EGSnrc transport and two independent 200M-per-beam replications.
+`.github/workflows/stage3h3-modelB1-tip-sensitivity.yml`
 
-B0 is used to measure the isolated effect of the confirmed 23.0 mm sensitive length. It will not be selected merely because its central value moves toward 0.95355.
+Run:
 
-If B0 does not resolve the discrepancy, Model B-public proceeds in declared sensitivity families for tip, guard/insulator and stem transition. Unknown proprietary dimensions will not be invented or labelled as manufacturer truth.
+`34690628930`
+
+Documentation:
+
+`docs/STAGE3H3_MODEL_B1_TIP.md`
+
+B1 preserves the B0 23.0 mm sensitive volume and introduces an asymmetric PMMA tip surrogate on the physical tip side.
+
+Public constraints provide:
+
+- sensitive length = 23.0 mm;
+- reference point = 13.0 mm from the chamber tip.
+
+Therefore the independently derived nominal tip-side distance is:
+
+`13.0 - 23.0/2 = 1.5 mm`.
+
+Predeclared B1 family:
+
+| case | PMMA tip surrogate | role |
+|---|---:|---|
+| tip1p0 | 1.0 mm | lower sensitivity bound |
+| tip1p5 | **1.5 mm** | nominal public-derived geometry |
+| tip2p0 | 2.0 mm | upper sensitivity bound |
+
+The nominal 1.5 mm case is fixed before results and is calculated with **two independent 120M/beam replications**. The 1.0 and 2.0 mm cases are 120M/beam screening bounds. No tip thickness will be selected simply because it reproduces 0.95355.
+
+PMMA is used only as a first-order tip surrogate because it is the public outer-wall material. The true rounded tip shape, axial graphite continuation, adhesive, guard and insulator details remain unknown and are not represented as manufacturer truth.
+
+If the independently defined nominal B1 geometry remains discrepant, the next declared steps are guard/insulator sensitivity and then stem-transition sensitivity.
 
 See also:
 
@@ -199,7 +224,8 @@ See also:
 | 3G | high-stat `kqp`/Model A benchmark | ❌ systematic fail |
 | 3H-0 | spectrum fidelity | ✅ complete; SpekCalc selected |
 | 3H-1 | paper-faithful SpekCalc + air48 / Model A | ❌ systematic fail |
-| 3H-2 | Model B0 public-sensitive-length benchmark | 🟡 running |
+| 3H-2 | Model B0 public-sensitive-length benchmark | 🟠 improved; not accepted |
+| 3H-3 | Model B1 tip sensitivity | 🟡 running |
 | 4 | Co-60 reference ratio | ⏸ blocked by benchmark acceptance |
 | 5 | water calculations for all 12 TERAD configurations | ⏸ blocked by benchmark acceptance |
 | 6 | TERAD spectrum/chamber sensitivity | pending |
