@@ -1,0 +1,237 @@
+name: Stage 4 Co-60 reference ratio Model B1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage4-co60-anchor.yml'
+      - 'scripts/build_stage4_co60_b1.py'
+
+jobs:
+  co60:
+    name: ${{ matrix.rep }} / Co60 / 300M
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - {rep: repA, seed1: '1001', seed2: '2001'}
+          - {rep: repB, seed1: '1002', seed2: '2002'}
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      REP: ${{ matrix.rep }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage4_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('Makefile')
+          text=p.read_text()
+          old='CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new=('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+               '$(EGS_SOURCEDIR)rad_compton1.mortran '
+               '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile')
+          p.write_text(text.replace(old,new,1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage4_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Build and self-check Co-60 Model B1 input
+        shell: bash
+        run: |
+          mkdir -p stage4_inputs stage4_logs
+          name="stage4_co60_${REP}"
+          python scripts/build_stage4_co60_b1.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output "stage4_inputs/${name}.egsinp" \
+            --ncase "$NCASE" --nbatch "$NBATCH" --xcse "$XCSE" --rr "$RR" \
+            --seed1 "$SEED1" --seed2 "$SEED2"
+          input="stage4_inputs/${name}.egsinp"
+          grep -Fq 'set label = chamber_cavity 10 16 20' "$input"
+          grep -Fq 'set label = chamber_xcse_zone 0 5 6 10 11 12 13 15 16 17 18 19 20 21 22 23 25' "$input"
+          grep -Fq 'z-planes = -100 -5 25' "$input"
+          grep -Fq 'rectangle = -5 -5 5 5' "$input"
+          grep -Fq 'energies = 1.173228 1.332492' "$input"
+          grep -Fq 'spectrum mode = 2' "$input"
+          grep -Fq 'cavity mass = 7.832972283369083e-04' "$input"
+
+      - name: Run Stage 4 Co-60 anchor
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          name="stage4_co60_${REP}"
+          cp "stage4_inputs/${name}.egsinp" "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage4_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+          log="stage4_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Eq "initial seeds[[:space:]]*=[[:space:]]*${SEED1}[[:space:]]+${SEED2}" "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+          grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then exit 1; fi
+
+      - name: Summarize Stage 4 point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, os, re
+          rep=os.environ['REP']
+          p=Path(f'stage4_logs/stage4_co60_{rep}.log')
+          out=Path(f'stage4_co60_{rep}_summary.csv')
+          cols=['rep','ncase','seed1','seed2','R_Co','u_R_Co_abs','u_R_Co_pct','elapsed_s']
+          row={k:'NA' for k in cols}
+          row.update(rep=rep,ncase=os.environ['NCASE'],seed1=os.environ['SEED1'],seed2=os.environ['SEED2'])
+          if p.exists():
+              text=p.read_text(errors='replace')
+              m=re.findall(r'^dose_to_water\s+chamber_in_water\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)',text,re.M)
+              if m:
+                  r,ur=map(float,m[-1])
+                  row['R_Co']=f'{r:.8g}'
+                  row['u_R_Co_abs']=f'{ur:.8g}'
+                  row['u_R_Co_pct']=f'{100*ur/r:.5f}'
+              me=re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s',text)
+              if me: row['elapsed_s']=me[-1]
+          with out.open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=cols); w.writeheader(); w.writerow(row)
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 4 point
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage4-co60-${{ matrix.rep }}
+          path: |
+            stage4_configure.log
+            stage4_egs_chamber_build.log
+            stage4_inputs/*.egsinp
+            stage4_logs/*.log
+            stage4_co60_*_summary.csv
+          if-no-files-found: warn
+
+  summary:
+    name: Evaluate Stage 4 Co-60 reference ratio
+    needs: co60
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Co-60 point summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage4-co60-*
+          path: stage4_downloads
+          merge-multiple: true
+
+      - name: Calculate weighted R_Co and replication gate
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, math
+          rows={}
+          for p in Path('stage4_downloads').glob('stage4_co60_*_summary.csv'):
+              with p.open(newline='') as f:
+                  r=next(csv.DictReader(f))
+              rows[r['rep']]=r
+          vals=[]
+          out=[]
+          for rep in ('repA','repB'):
+              r=rows[rep]
+              if r['R_Co']=='NA':
+                  raise SystemExit(f'Missing valid Co-60 result for {rep}')
+              x=float(r['R_Co']); u=float(r['u_R_Co_abs'])
+              vals.append((x,u))
+              out.append({'estimate':rep,'R_Co':f'{x:.8f}','u_abs':f'{u:.8f}','u_pct':f'{100*u/x:.4f}','z_rep':'NA','gate':'NA','note':'independent 300M Co-60 replication'})
+          w=[1/u**2 for x,u in vals]
+          rw=sum(wi*x for wi,(x,u) in zip(w,vals))/sum(w)
+          uw=math.sqrt(1/sum(w))
+          zrep=(vals[0][0]-vals[1][0])/math.sqrt(vals[0][1]**2+vals[1][1]**2)
+          precision_ok=all(100*u/x <= 1.0 for x,u in vals)
+          gate=(abs(zrep)<=2.0 and precision_ok)
+          out.append({'estimate':'weighted','R_Co':f'{rw:.8f}','u_abs':f'{uw:.8f}','u_pct':f'{100*uw/rw:.4f}','z_rep':f'{zrep:+.3f}','gate':str(gate).lower(),'note':'N_D,w(Co-60)=5.389e7 Gy/C retained as certificate calibration metadata; not used to fit R_Co'})
+          fields=['estimate','R_Co','u_abs','u_pct','z_rep','gate','note']
+          with open('stage4_co60_summary.csv','w',newline='') as f:
+              wr=csv.DictWriter(f,fieldnames=fields); wr.writeheader(); wr.writerows(out)
+          with open('stage4_co60_gate.txt','w') as f:
+              f.write(f'gate_pass={str(gate).lower()}\n')
+              f.write(f'R_Co_weighted={rw:.8f}\n')
+              f.write(f'u_R_Co={uw:.8f}\n')
+              f.write(f'z_rep={zrep:+.3f}\n')
+              f.write(f'precision_ok={str(precision_ok).lower()}\n')
+          print(open('stage4_co60_summary.csv').read())
+          print(open('stage4_co60_gate.txt').read())
+          if not gate:
+              raise SystemExit('Stage 4 Co-60 replication gate failed')
+          PY
+
+      - name: Upload Stage 4 summary
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage4-co60-summary
+          path: |
+            stage4_co60_summary.csv
+            stage4_co60_gate.txt
+          if-no-files-found: warn
