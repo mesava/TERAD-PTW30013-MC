@@ -1,0 +1,20 @@
+parameter,value,unit,note
+chamber_model,PTW30013 Model B1,,benchmark-validated fixed geometry
+chamber_serial,013488,,certificate calibration chamber
+N_D_w_Co60,5.389e7,Gy/C,certificate metadata; not used to fit MC R_Co
+SDD,100,cm,source to chamber reference point
+SSD,95,cm,source to water surface
+reference_depth,5,cm,water depth of chamber reference point
+field_x,10,cm,field size at chamber reference plane
+field_y,10,cm,field size at chamber reference plane
+phantom_x,30,cm,water phantom transverse size
+phantom_y,30,cm,water phantom transverse size
+phantom_z,30,cm,water thickness downstream from surface
+explicit_air_path,95,cm,source to water surface
+Co60_gamma_1,1.173228,MeV,NNDC/ENSDF evaluated gamma energy
+Co60_gamma_2,1.332492,MeV,NNDC/ENSDF evaluated gamma energy
+Co60_probability_1,0.4996682223020668,,normalized from 99.85 per 100 decays
+Co60_probability_2,0.5003317776979331,,normalized from 99.9826 per 100 decays
+NCASE_per_rep,300000000,histories,two independent replications
+XCSE,64,,same accepted egs_chamber VRT architecture
+RR,64,,Russian Roulette survival probability 1/64
