@@ -168,14 +168,18 @@ def main() -> None:
         raise SystemExit("benchmark spectrum anchor missing")
     text = text.replace(old_spectrum, new_spectrum, 1)
 
+    # Replace every template token, including tokens that only remain in
+    # template comments.  The first Stage 4 engineering run failed because
+    # @@BEAM@@ survived in the header comment after the physical spectrum
+    # block had already been replaced correctly.
     replacements = {
+        "@@BEAM@@": "Co60",
         "@@XCSE@@": args.xcse,
         "@@RR@@": args.rr,
         "@@NCASE@@": args.ncase,
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
-    # @@BEAM@@ is intentionally removed with the source spectrum block.
     text = text.replace("nbatch = 10", f"nbatch = {args.nbatch}", 1)
 
     rng = (
@@ -203,7 +207,8 @@ def main() -> None:
         if check not in text:
             raise SystemExit(f"Co-60 self-check failed: {check}")
     if "@@" in text:
-        raise SystemExit("Unresolved template token remains")
+        unresolved = sorted({part.split("@@", 1)[0] for part in text.split("@@")[1::2]})
+        raise SystemExit(f"Unresolved template token remains: {unresolved}")
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
