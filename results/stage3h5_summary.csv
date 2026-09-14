@@ -1,0 +1,7 @@
+quality,estimate,kq_250,uk_abs,uk_pct,target,delta_vs_pub_pct,z_vs_pub,note
+CCRI135,repA,0.96777383,0.00582582,0.6020,0.97460,-0.7004,-1.172,independent 300M/beam validation replication
+CCRI135,repB,0.97574940,0.00593452,0.6082,0.97460,+0.1179,+0.194,independent 300M/beam validation replication
+CCRI135,weighted,0.97168791,0.00415738,0.4279,0.97460,-0.2988,-0.700,rep consistency z=-0.959
+CCRI180,repA,0.98972791,0.00590583,0.5967,0.98565,+0.4137,+0.690,independent 300M/beam validation replication
+CCRI180,repB,0.98572307,0.00594931,0.6035,0.98565,+0.0074,+0.012,independent 300M/beam validation replication
+CCRI180,weighted,0.98774017,0.00419134,0.4243,0.98565,+0.2121,+0.499,rep consistency z=+0.478
