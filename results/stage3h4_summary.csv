@@ -1,0 +1,4 @@
+estimate,k100_250,uk_abs,uk_pct,delta_vs_pub_pct,shift_vs_B0_pct,shift_vs_screening_pct,note
+repA,0.95038353,0.00568178,0.5978,-0.3321,+1.2475,+0.5812,independent 300M/beam nominal B1 replication
+repB,0.95148181,0.00568772,0.5978,-0.2169,+1.3645,+0.6974,independent 300M/beam nominal B1 replication
+weighted,0.95093210,0.00401972,0.4227,-0.2745,+1.3059,+0.6392,predeclared nominal B1; rep consistency z=-0.137; z_vs_pub=-0.651
