@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Build the predeclared nominal PTW30013 Model B1 input for Stage 3H-4.
+"""Build the fixed nominal PTW30013 Model B1 input for benchmark validation.
 
-This is a high-stat confirmation of the already selected 1.5 mm PMMA tip surrogate.
-It does not fit any geometry parameter to the published benchmark.
+The geometry is the predeclared 1.5 mm PMMA tip-surrogate Model B1 selected
+before high-stat validation. This builder does not fit any geometry parameter
+to published benchmark values and supports CCRI100/135/180/250.
 """
 from __future__ import annotations
 
@@ -15,7 +16,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--template", required=True)
     ap.add_argument("--output", required=True)
-    ap.add_argument("--beam", required=True, choices=["CCRI100", "CCRI250"])
+    ap.add_argument(
+        "--beam",
+        required=True,
+        choices=["CCRI100", "CCRI135", "CCRI180", "CCRI250"],
+    )
     ap.add_argument("--ncase", required=True)
     ap.add_argument("--nbatch", required=True)
     ap.add_argument("--xcse", required=True)
@@ -161,6 +166,7 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text)
     print(f"Wrote {out}")
+    print(f"beam = {args.beam}")
     print(f"nominal tip = {tip:.2f} cm; external tip position = {1.15 + tip:.2f} cm")
     print(f"net cavity air volume = {net:.12f} cm3")
     print(f"cavity mass = {mass:.15e} g")
