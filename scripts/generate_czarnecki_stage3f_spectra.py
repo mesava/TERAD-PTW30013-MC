@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Stage 3F spectrum-model sensitivity for the Czarnecki 2020 benchmark.
+"""Generate Czarnecki 2020 benchmark spectrum surrogates.
 
-The published benchmark spectra were generated with SpekCalc. Stage 3E showed
-that using the paper filtration and explicit Emin cut improves agreement, but
-our surrogate was still generated with the SpekPy-v2 kqp model.
+The published benchmark spectra were generated with SpekCalc. This script
+creates otherwise identical published-filtration/Emin spectra with three
+SpekPy 2.5.4 physics models:
+  - kqp        : diagnostic surrogate
+  - spekcalc   : primary paper-faithful benchmark surrogate
+  - spekpy-v1  : additional spectral-shape diagnostic
 
-This script generates otherwise identical published-filtration/Emin spectra
-with three SpekPy 2.5.4 physics models:
-  - kqp        : current Stage 3E surrogate baseline
-  - spekcalc   : legacy SpekCalc-compatible model; highest-priority test
-  - spekpy-v1  : older SpekPy model, used as an additional spectral-shape test
-
-No HVL refit is performed in Stage 3F. The point is to isolate the spectrum
-engine/shape while retaining the paper's nominal filtration and Emin.
+No HVL refit is performed. The published nominal filtration and Emin remain
+fixed. All four benchmark qualities CCRI100/135/180/250 are generated so the
+same spectrum implementation can be used for endpoint and intermediate-quality
+validation.
 """
 from __future__ import annotations
 
@@ -33,6 +32,7 @@ ANODE_ANGLE_DEG = 30.0
 BIN_WIDTH_KEV = 0.5
 DISTANCE_CM = 100.0
 AIR_GAP_MM = 500.0
+BENCHMARK_BEAMS = {"CCRI100", "CCRI135", "CCRI180", "CCRI250"}
 MODES = {
     "kqp": {"physics": "kqp", "mu_data_source": None},
     "spekcalc": {"physics": "spekcalc", "mu_data_source": "nist"},
@@ -93,7 +93,7 @@ def write_ensrc(path: Path, beam: str, mode: str, e: np.ndarray, y: np.ndarray):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
         f.write(
-            f"Czarnecki2020 Stage3F {beam}/{mode}: SpekPy {package_version('spekpy')}, "
+            f"Czarnecki2020 benchmark {beam}/{mode}: SpekPy {package_version('spekpy')}, "
             f"W {ANODE_ANGLE_DEG:g}deg, first {AIR_GAP_MM:g}mm Air, published filters/Emin\n"
         )
         f.write(f"{len(e)}, {lower/1000.0:.10e}, 1\n")
@@ -111,9 +111,14 @@ def main() -> None:
     rows = list(csv.DictReader(DATA.open()))
     summary = []
 
+    available = {r["beam_id"] for r in rows}
+    missing = BENCHMARK_BEAMS - available
+    if missing:
+        raise RuntimeError(f"Missing benchmark rows: {sorted(missing)}")
+
     for r in rows:
         beam = r["beam_id"]
-        if beam not in {"CCRI100", "CCRI250"}:
+        if beam not in BENCHMARK_BEAMS:
             continue
         kvp = float(r["kvp"])
         emin = float(r["emin_keV"])
@@ -159,7 +164,8 @@ def main() -> None:
     out = RESULTS / "czarnecki_stage3f_spectrum_summary.csv"
     with out.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(summary[0].keys()))
-        w.writeheader(); w.writerows(summary)
+        w.writeheader()
+        w.writerows(summary)
 
 
 if __name__ == "__main__":
