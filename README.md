@@ -4,7 +4,7 @@ Monte Carlo проект для определения chamber-specific коэф
 
 > **Каноническое ТЗ:** `docs/CANONICAL_MC_TASK.md` и `data/terad_clinical_geometries.csv` задают исходные данные TERAD, все 12 клинических комбинаций аппликаторов и реальную геометрию измерений в RW3. Эти данные имеют приоритет над benchmark-ветками.
 
-> **Текущий этап:** выполняется **Stage 3H-4 — high-stat подтверждение заранее выбранной nominal Model B1 с PMMA tip surrogate 1.5 mm**. Stage 3H-3B screening завершён успешно, но две независимые nominal-реплики по 120M/beam разошлись на `z = +2.668`, поэтому среднее значение не принимается как окончательное без дополнительной статистики.
+> **Текущий этап:** выполняется **Stage 3H-5 — независимая проверка промежуточных качеств CCRI135 и CCRI180 для фиксированной nominal Model B1**. Stage 3H-4 успешно подтвердил endpoint benchmark CCRI100/CCRI250: weighted `k100,250 = 0.95093210 ± 0.00401972`, `z_vs_pub = -0.651`, rep consistency `z = -0.137`.
 
 ## Основная цель
 
@@ -117,11 +117,14 @@ Model A не воспроизводит реальную proprietary геоме�
 
 ## Stage 3 — опубликованный benchmark PTW 30013
 
-Опубликованный midpoint для CCRI100/CCRI250:
+Опубликованные midpoint targets:
 
-`k100,250 = 0.95355`
+- `k100,250 = 0.95355`;
+- `k135,250 = 0.97460`;
+- `k180,250 = 0.98565`;
+- `k250,250 = 1`.
 
-при определении `R_Q = D_w / D_cav`.
+Определение: `R_Q = D_w / D_cav`.
 
 ### Stage 3G — high-stat `kqp` / Model A ❌
 
@@ -179,7 +182,7 @@ Axial length центрального электрода 21.2 mm пока сох
 
 ### Stage 3H-3B — Model B1 tip sensitivity ✅ screening завершён
 
-Рабочий исправленный run: **`34695545832`**, `completed / success`.
+Рабочий исправленный run: `34695545832`, `completed / success`.
 
 B1 сохраняет sensitive volume Model B0 с length 23.0 mm и добавляет асимметричный PMMA tip surrogate со стороны физического tip камеры.
 
@@ -202,25 +205,15 @@ B1 сохраняет sensitive volume Model B0 с length 23.0 mm и добав�
 | tip1p5 weighted | **1.5 mm** | **0.94489204** | **0.00632069** | **-0.9080%** |
 | tip2p0 repA | 2.0 mm | 0.92910553 | 0.00879336 | -2.5635% |
 
-Результат сохранён в `results/stage3h3b_summary.csv`.
+Результат: `results/stage3h3b_summary.csv`.
 
-Ключевой вывод: nominal 1.5 mm был выбран **до** получения MC-результатов и не подбирался по target. Его weighted central value приблизился к публикации, однако две nominal-реплики имеют расхождение `z = +2.668`. Поэтому screening B1 **не является достаточным основанием для принятия камеры**. Варианты 1.0 и 2.0 mm также не используются для выбора «лучшего попадания», поскольку имеют только одну реплику и сопоставимую статистическую неопределённость.
+Nominal 1.5 mm был выбран до получения MC-результатов и не подбирался по target. Screening nominal-реплики разошлись на `z = +2.668`, поэтому понадобилось независимое high-stat подтверждение.
 
-### Stage 3H-4 — nominal Model B1 high-stat confirmation 🟡 выполняется
+### Stage 3H-4 — nominal Model B1 high-stat confirmation ✅ endpoint benchmark пройден
 
-Workflow:
+Run `34696899052`, `completed / success`.
 
-`.github/workflows/stage3h4-modelB1-nominal-highstat.yml`
-
-Активный run:
-
-**`34696899052`**
-
-Commit запуска:
-
-`1a2b842c61ef5f2cc09a772f5fe4bd407b339588`
-
-Фиксируется только заранее выбранная nominal Model B1:
+Фиксированная nominal Model B1:
 
 - sensitive length = 23.0 mm;
 - PMMA tip surrogate = **1.5 mm**;
@@ -228,11 +221,61 @@ Commit запуска:
 - paper-faithful air48;
 - corrected EGS_ConeStack region topology;
 - две независимые реплики;
-- **300M histories/beam** для CCRI100 и CCRI250 в каждой реплике.
+- 300M histories/beam для CCRI100 и CCRI250.
 
-Цель Stage 3H-4 — проверить воспроизводимость nominal B1 и уменьшить статистическую неопределённость. Геометрические параметры на этом этапе **не меняются и не подгоняются к `0.95355`**.
+| Оценка | k100,250 | u(k) | Отклонение от target |
+|---|---:|---:|---:|
+| repA | 0.95038353 | 0.00568178 | -0.3321% |
+| repB | 0.95148181 | 0.00568772 | -0.2169% |
+| weighted | **0.95093210** | **0.00401972** | **-0.2745%** |
 
-Если две high-stat реплики согласуются и weighted result совместим с опубликованным benchmark, Model B1 может перейти к формальному benchmark-gate. Если нет — следующий заранее объявленный этап: guard/insulator sensitivity, затем stem-transition sensitivity.
+High-stat реплики согласуются: `z_rep = -0.137`.
+
+Weighted result совместим с опубликованным midpoint: `z_vs_pub = -0.651`.
+
+Следовательно, endpoint CCRI100/250 benchmark для nominal B1 **пройден**. Результат сохранён в `results/stage3h4_summary.csv`.
+
+Однако камера ещё не считается окончательно принятой: по заранее объявленной схеме требуется независимая проверка CCRI135 и CCRI180 без изменения геометрии.
+
+### Stage 3H-5 — CCRI135/CCRI180 intermediate validation 🟡 выполняется
+
+Workflow:
+
+`.github/workflows/stage3h5-intermediate-validation.yml`
+
+Run:
+
+**`34820082073`**
+
+Commit запуска:
+
+`4aaa377971c54af038133eef9041db52eea6ae1b`
+
+Расчётный дизайн:
+
+- фиксированная nominal Model B1 из Stage 3H-4;
+- repA: CCRI135 + CCRI180 + CCRI250;
+- repB: CCRI135 + CCRI180 + CCRI250;
+- 300M histories на каждый beam;
+- всего 6 MC jobs;
+- у каждой реплики собственный CCRI250 denominator.
+
+Targets:
+
+- `k135,250 = 0.97460`;
+- `k180,250 = 0.98565`.
+
+Заранее определённый gate:
+
+1. `|z_rep| <= 2` для CCRI135;
+2. `|z_rep| <= 2` для CCRI180;
+3. `|z_vs_pub| <= 2` для weighted CCRI135;
+4. `|z_vs_pub| <= 2` для weighted CCRI180;
+5. сохраняется порядок `k135,250 < k180,250 < 1`.
+
+Если gate проходит, nominal Model B1 считается benchmark-validated и проект переходит к Co-60 и TERAD production calculations. Если нет — следующий заранее объявленный этап: guard/insulator sensitivity, затем stem-transition sensitivity.
+
+Документация: `docs/STAGE3H5_INTERMEDIATE_VALIDATION.md`.
 
 См. также:
 
@@ -251,10 +294,11 @@ Commit запуска:
 | 3H-0 | spectrum fidelity | ✅ завершено; выбран SpekCalc |
 | 3H-1 | SpekCalc + air48 / Model A | ❌ systematic fail |
 | 3H-2 | Model B0 public sensitive length | 🟠 улучшение; не принят |
-| 3H-3B | Model B1 tip sensitivity screening | ✅ завершено; nominal требует high-stat подтверждения |
-| 3H-4 | nominal Model B1 high-stat replication | 🟡 выполняется |
-| 4 | Co-60 reference ratio | ⏸ до принятия benchmark |
-| 5 | water calculations для всех 12 TERAD configurations | ⏸ до принятия benchmark |
+| 3H-3B | Model B1 tip sensitivity screening | ✅ завершено |
+| 3H-4 | nominal Model B1 endpoint high-stat validation | ✅ CCRI100/250 пройден |
+| 3H-5 | CCRI135/180 intermediate validation | 🟡 выполняется |
+| 4 | Co-60 reference ratio | ⏸ до полного принятия benchmark |
+| 5 | water calculations для всех 12 TERAD configurations | ⏸ до полного принятия benchmark |
 | 6 | TERAD spectrum/chamber sensitivity | ожидает выполнения |
 | 7 | geometry-response ratios `k_g` | ожидает выполнения |
 | 8 | RW3-to-water + 12 direct RW3 end-to-end | ожидает выполнения |
@@ -263,10 +307,10 @@ Commit запуска:
 ## Правила интерпретации benchmark
 
 - measured HVL TERAD не меняются ради улучшения fit;
-- geometry PTW30013 не подгоняется к опубликованному `k100,250`;
+- geometry PTW30013 не подгоняется к опубликованным benchmark values;
 - один HVL не определяет спектр однозначно — spectrum ambiguity учитывается отдельно;
 - Stage 3 служит валидацией методики, а не источником TERAD input data;
-- F50 не является «reference-only» — это полноценная клиническая конфигурация;
+- F50 не является `reference-only` — это полноценная клиническая конфигурация;
 - RW3 рассматривается отдельно от water-response и дополнительно проверяется direct end-to-end MC.
 
 ## Путь к production calculations после принятия benchmark
