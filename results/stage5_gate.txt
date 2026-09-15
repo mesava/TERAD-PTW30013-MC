@@ -1,0 +1,5 @@
+gate_pass=true
+points=12
+criterion=max relative MC uncertainty per R_Qg <= 1.0%
+R_Co=1.12016676
+u_R_Co=0.00104473
