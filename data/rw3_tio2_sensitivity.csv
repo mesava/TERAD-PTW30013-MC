@@ -1,0 +1,4 @@
+case,tio2_mass_fraction,tio2_mass_percent,density_g_cm3,basis,purpose
+low,0.016,1.6,1.045,"PTW nominal 2.0% +/- 0.4 percentage points","lower manufacturer tolerance endpoint"
+nominal,0.020,2.0,1.045,"PTW nominal","accepted Stage 8 production model"
+high,0.024,2.4,1.045,"PTW nominal 2.0% +/- 0.4 percentage points","upper manufacturer tolerance endpoint"
