@@ -2,7 +2,7 @@
 
 Monte Carlo проект для определения chamber-specific коэффициентов коррекции для **PTW 30013** на киловольтном рентгенотерапевтическом аппарате **TERAD**.
 
-> **Текущий статус:** PTW 30013 **Model B1 benchmark-validated** по CCRI100/135/180/250. **Stage 4 Co-60 — PASS**: `R_Co = 1.12016676 ± 0.00104473`. **Stage 5 TERAD matched-water — PASS: 12/12 конфигураций**. **Stage 8 — реальная RW3-геометрия и прямой RW3→water transfer — ACTIVE**.
+> **Текущий статус:** PTW 30013 **Model B1 benchmark-validated** по CCRI100/135/180/250. **Stage 4 Co-60 — PASS**: `R_Co = 1.12016676 ± 0.00104473`. **Stage 5 TERAD matched-water — PASS: 12/12 конфигураций**. **Stage 8 RW3→water direct — PASS: 12/12**. **Stage 8S1 RW3 TiO2 sensitivity — ACTIVE**.
 
 ## Базовая задача
 
@@ -189,24 +189,25 @@ The supplied clinical data define SSD and aperture but not proprietary applicato
 
 For rectangular fields the current explicit convention is: first listed field dimension along chamber axis/stem and second dimension perpendicular. Orientation remains a geometry-sensitivity item.
 
-## Stage 8 — RW3 matched / direct end-to-end 🟡 ACTIVE
+## Stage 8 — RW3 matched / direct end-to-end ✅ PASS
 
-Real measurement geometry:
+Workflow run: **`34959596116`**.
+
+Accepted real measurement geometry:
 
 - RW3 phantom type 29672, transverse size = 30×30 cm²;
-- PTW 30013 is inserted into chamber plate **29672/U19**;
-- U19 thickness = 20 mm, with PTW-specified chamber-axis offsets **H1 = 7 mm** and **H2 = 13 mm**;
-- in the actual clinical assembly, the chamber axis lies **7 mm below the upper face of U19**;
-- an additional **13 mm of RW3 slabs is placed above U19**;
-- therefore the geometric chamber centre / reference point is at a **physical depth of 20 mm = 2.0 cm from the RW3 surface**;
+- PTW 30013 in chamber plate **29672/U19**;
+- U19 chamber axis = **7 mm below the upper U19 face**;
+- **13 mm additional RW3** above U19;
+- geometric chamber centre/reference point = **20 mm = 2.0 cm physical depth** from the RW3 surface;
 - PTW 30013 horizontal, chamber axis perpendicular to beam, reference point on CAX, stem right;
 - approximately 10 cm RW3 downstream;
 - applicator contacts RW3 surface;
 - SSD = 40 or 50 cm from source to RW3 surface.
 
-This 2.0 cm depth is a **physical geometric depth**, not a water-equivalent reinterpretation. It is deliberately matched to the 2.0 cm water depth used in Stage 5, so the direct RW3→water comparison changes the phantom material while preserving the reference-point depth and clinical SSD.
+This 2.0 cm is a physical geometric depth and is deliberately matched to the 2.0 cm water depth in Stage 5.
 
-RW3 manufacturer anchors used in MC:
+RW3 nominal manufacturer anchors:
 
 - polystyrene `(C8H8)` containing **2.0 ± 0.4% TiO2 by mass**;
 - density = **1.045 g/cm³**;
@@ -214,16 +215,48 @@ RW3 manufacturer anchors used in MC:
 - mean `Z/A = 0.536`;
 - slab thickness tolerance = **±0.1 mm**.
 
-The direct calculation determines for each of the 12 configurations:
+Final Stage 8 gate:
 
-- `D_cav,RW3 / history`;
-- `D_RW3 / history` at the chamber reference point;
-- matched `D_w / D_RW3`;
-- `k_RW3→w = D_cav,water / D_cav,RW3`;
-- `R_Q,g^(RW3→w) = D_w,water / D_cav,RW3`;
-- `k_Q,g,Co^(RW3→w) = R_Q,g^(RW3→w) / R_Co`.
+- `gate_pass=true`
+- `points=12`
+- maximum statistical uncertainty of direct R = **0.44695%**
+- maximum direct-vs-factorized consistency difference = **0.00406%**
 
-This provides the direct coefficient needed to convert a chamber reading obtained in the real RW3 setup to absorbed dose to water.
+| Config | R direct RW3→water | u(R), % | k_Q,g,Co direct RW3→water |
+|---|---:|---:|---:|
+| Q120 F40 4×15 | 1.013484 | 0.40342 | **0.904762** |
+| Q120 F40 6×8 | 1.010743 | 0.35439 | **0.902315** |
+| Q120 F50 8×10 | 0.997722 | 0.43834 | **0.890691** |
+| Q140 F40 4×15 | 1.038613 | 0.40910 | **0.927195** |
+| Q140 F40 6×8 | 1.032862 | 0.35831 | **0.922061** |
+| Q140 F50 8×10 | 1.014479 | 0.44128 | **0.905650** |
+| Q150 F40 4×15 | 1.062059 | 0.41086 | **0.948126** |
+| Q150 F40 6×8 | 1.064590 | 0.36203 | **0.950385** |
+| Q150 F50 8×10 | 1.045640 | 0.44695 | **0.933468** |
+| Q200 F40 4×15 | 1.083798 | 0.39851 | **0.967533** |
+| Q200 F40 6×8 | 1.076843 | 0.35164 | **0.961324** |
+| Q200 F50 8×10 | 1.074094 | 0.43440 | **0.958870** |
+
+Persisted files:
+
+- `results/stage8_rw3_direct_summary.csv`
+- `results/stage8_gate.txt`
+- `docs/STAGE8_RW3_DIRECT.md`
+
+The direct form `D_w,water / D_cav,RW3` and the factorized Stage 5 × RW3-transfer form agree to within **0.00406%** over all 12 configurations.
+
+## Stage 8S1 — RW3 TiO2 material sensitivity 🟡 ACTIVE
+
+First material screen uses the PTW manufacturer tolerance endpoints while keeping the accepted geometry, spectra, chamber Model B1 and RW3 density fixed:
+
+- low endpoint: **1.6% TiO2 by mass**;
+- nominal: **2.0%** (accepted Stage 8 production model);
+- high endpoint: **2.4%**;
+- density fixed at **1.045 g/cm³** to isolate composition sensitivity.
+
+Screening is run for the F50 8×10 configuration at Q120/Q140/Q150/Q200 with 300M histories per endpoint. The low/high calculations reuse the corresponding nominal F50 seed pairs to reduce irrelevant random-history differences. Endpoint shifts will be converted into a preliminary material uncertainty contribution; expansion to all 12 geometries depends on the measured sensitivity magnitude.
+
+Workflow: `.github/workflows/stage8s1-rw3-tio2-sensitivity.yml`.
 
 ## EGSnrc
 
@@ -244,9 +277,10 @@ Validated transport architecture uses low-energy photon transport, Radiative Com
 | 3H-5 | CCRI135/180 independent validation | ✅ PASS |
 | 4 | Co-60 `R_Co` | ✅ PASS |
 | 5 | 12 TERAD matched-water `R_Q,g` | ✅ 12/12 PASS |
-| 6 | spectrum/chamber sensitivity | ⏸ nominal production first |
-| 7 | applicator/orientation sensitivity | ⏸ nominal production first |
-| 8 | RW3-to-water + 12 direct end-to-end | 🟡 ACTIVE |
+| 6 | spectrum/chamber sensitivity | ⏸ after RW3 material screen |
+| 7 | applicator/orientation sensitivity | ⏸ after RW3 material screen |
+| 8 | RW3-to-water + 12 direct end-to-end | ✅ 12/12 PASS |
+| 8S1 | RW3 TiO2 composition sensitivity | 🟡 ACTIVE |
 | 9 | final coefficients + uncertainty budget | ⏸ |
 
 ## Project rules
