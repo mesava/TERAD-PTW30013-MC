@@ -1,0 +1,120 @@
+name: Stage 8S1 RW3 TiO2 sensitivity screen
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage8s1-rw3-tio2-sensitivity.yml'
+      - 'scripts/build_stage6_rw3_tio2_sensitivity.py'
+      - 'scripts/run_stage8s1_point.sh'
+      - 'scripts/summarize_stage8s1_tio2.py'
+      - 'scripts/evaluate_stage8s1_tio2.py'
+      - 'data/rw3_tio2_sensitivity.csv'
+      - 'results/stage8_rw3_direct_summary.csv'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile sensitivity code
+        run: |
+          python -m py_compile scripts/build_stage8_terad_rw3_b1.py
+          python -m py_compile scripts/build_stage6_rw3_tio2_sensitivity.py
+          python -m py_compile scripts/summarize_stage8s1_tio2.py
+          python -m py_compile scripts/evaluate_stage8s1_tio2.py
+      - name: Preflight low/high RW3 inputs
+        run: |
+          for f in 0.016 0.024; do
+            python scripts/build_stage6_rw3_tio2_sensitivity.py \
+              --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+              --output "/tmp/Q120_F50_${f}.egsinp" \
+              --beam Q120 --ssd 50 --field-x 8 --field-y 10 \
+              --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 3103 --seed2 4103 \
+              --tio2-mass-fraction "$f"
+          done
+
+  spectra:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - run: python scripts/generate_spekpy_spectra.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s1-terad-spectra
+          path: spectra/*.ensrc
+
+  sensitivity:
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {beam: Q120, variant: low,  tio2: '0.016', seed1: '3103', seed2: '4103'}
+          - {beam: Q120, variant: high, tio2: '0.024', seed1: '3103', seed2: '4103'}
+          - {beam: Q140, variant: low,  tio2: '0.016', seed1: '3203', seed2: '4203'}
+          - {beam: Q140, variant: high, tio2: '0.024', seed1: '3203', seed2: '4203'}
+          - {beam: Q150, variant: low,  tio2: '0.016', seed1: '3303', seed2: '4303'}
+          - {beam: Q150, variant: high, tio2: '0.024', seed1: '3303', seed2: '4303'}
+          - {beam: Q200, variant: low,  tio2: '0.016', seed1: '3403', seed2: '4403'}
+          - {beam: Q200, variant: high, tio2: '0.024', seed1: '3403', seed2: '4403'}
+    env:
+      BEAM: ${{ matrix.beam }}
+      VARIANT: ${{ matrix.variant }}
+      TIO2: ${{ matrix.tio2 }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage8s1-terad-spectra
+          path: stage8s1_spectra
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run sensitivity point
+        run: bash scripts/run_stage8s1_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s1-${{ matrix.beam }}-${{ matrix.variant }}
+          path: stage8s1_point_${{ matrix.beam }}_${{ matrix.variant }}.csv
+
+  evaluate:
+    needs: sensitivity
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s1-*
+          path: stage8s1_points
+          merge-multiple: true
+      - name: Evaluate material sensitivity
+        run: |
+          python scripts/evaluate_stage8s1_tio2.py \
+            --baseline results/stage8_rw3_direct_summary.csv \
+            --points-glob 'stage8s1_points/stage8s1_point_*.csv' \
+            --output stage8s1_rw3_tio2_sensitivity_summary.csv \
+            --gate-output stage8s1_gate.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s1-rw3-tio2-summary
+          path: |
+            stage8s1_rw3_tio2_sensitivity_summary.csv
+            stage8s1_gate.txt
