@@ -1,0 +1,326 @@
+name: Stage 5 TERAD matched-water production
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage5-terad-water.yml'
+      - 'scripts/build_stage5_terad_water_b1.py'
+      - 'scripts/generate_spekpy_spectra.py'
+      - 'data/beam_qualities.csv'
+      - 'data/terad_clinical_geometries.csv'
+
+jobs:
+  spectra:
+    name: Generate accepted TERAD spectra
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install spectrum dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' numpy scipy
+
+      - name: Generate Stage 1 accepted spectra
+        run: |
+          python scripts/generate_spekpy_spectra.py
+          test -s spectra/Q120.ensrc
+          test -s spectra/Q140.ensrc
+          test -s spectra/Q150.ensrc
+          test -s spectra/Q200.ensrc
+          grep -q '^Q120,' results/spekpy_fit_summary.csv
+          grep -q '^Q140,' results/spekpy_fit_summary.csv
+          grep -q '^Q150,' results/spekpy_fit_summary.csv
+          grep -q '^Q200,' results/spekpy_fit_summary.csv
+
+      - name: Upload TERAD spectra
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage5-terad-spectra
+          path: |
+            spectra/*.ensrc
+            spectra/*_spekpy.csv
+            results/spekpy_fit_summary.csv
+
+  water:
+    name: ${{ matrix.config }} / 300M
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {config: Q120_F40_6x8,  beam: Q120, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  seed1: '1101', seed2: '2101'}
+          - {config: Q120_F40_4x15, beam: Q120, applicator: F40, ssd: '40', field_x: '4', field_y: '15', seed1: '1102', seed2: '2102'}
+          - {config: Q120_F50_8x10, beam: Q120, applicator: F50, ssd: '50', field_x: '8', field_y: '10', seed1: '1103', seed2: '2103'}
+          - {config: Q140_F40_6x8,  beam: Q140, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  seed1: '1201', seed2: '2201'}
+          - {config: Q140_F40_4x15, beam: Q140, applicator: F40, ssd: '40', field_x: '4', field_y: '15', seed1: '1202', seed2: '2202'}
+          - {config: Q140_F50_8x10, beam: Q140, applicator: F50, ssd: '50', field_x: '8', field_y: '10', seed1: '1203', seed2: '2203'}
+          - {config: Q150_F40_6x8,  beam: Q150, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  seed1: '1301', seed2: '2301'}
+          - {config: Q150_F40_4x15, beam: Q150, applicator: F40, ssd: '40', field_x: '4', field_y: '15', seed1: '1302', seed2: '2302'}
+          - {config: Q150_F50_8x10, beam: Q150, applicator: F50, ssd: '50', field_x: '8', field_y: '10', seed1: '1303', seed2: '2303'}
+          - {config: Q200_F40_6x8,  beam: Q200, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  seed1: '1401', seed2: '2401'}
+          - {config: Q200_F40_4x15, beam: Q200, applicator: F40, ssd: '40', field_x: '4', field_y: '15', seed1: '1402', seed2: '2402'}
+          - {config: Q200_F50_8x10, beam: Q200, applicator: F50, ssd: '50', field_x: '8', field_y: '10', seed1: '1403', seed2: '2403'}
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      CONFIG: ${{ matrix.config }}
+      BEAM: ${{ matrix.beam }}
+      APPLICATOR: ${{ matrix.applicator }}
+      SSD: ${{ matrix.ssd }}
+      FIELD_X: ${{ matrix.field_x }}
+      FIELD_Y: ${{ matrix.field_y }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Download accepted TERAD spectra
+        uses: actions/download-artifact@v4
+        with:
+          name: stage5-terad-spectra
+          path: stage5_spectra
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage5_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('Makefile')
+          text=p.read_text()
+          old='CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new=('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+               '$(EGS_SOURCEDIR)rad_compton1.mortran '
+               '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile')
+          p.write_text(text.replace(old,new,1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage5_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Build and self-check TERAD water input
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          mkdir -p stage5_inputs stage5_logs
+          cp "stage5_spectra/spectra/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
+          python scripts/build_stage5_terad_water_b1.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output "stage5_inputs/stage5_${CONFIG}.egsinp" \
+            --beam "$BEAM" --ssd "$SSD" --field-x "$FIELD_X" --field-y "$FIELD_Y" \
+            --ncase "$NCASE" --nbatch "$NBATCH" --xcse "$XCSE" --rr "$RR" \
+            --seed1 "$SEED1" --seed2 "$SEED2"
+          input="stage5_inputs/stage5_${CONFIG}.egsinp"
+          grep -Fq 'set label = chamber_cavity 10 16 20' "$input"
+          grep -Fq 'cavity mass = 7.832972283369083e-04' "$input"
+          grep -Fq "spectrum file = \$EGS_HOME/egs_chamber/${BEAM}.ensrc" "$input"
+          grep -Fq 'x-planes = -15 15' "$input"
+          grep -Fq 'y-planes = -15 15' "$input"
+
+      - name: Run Stage 5 TERAD water MC
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          name="stage5_${CONFIG}"
+          cp "stage5_inputs/${name}.egsinp" "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage5_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+          log="stage5_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Eq "initial seeds[[:space:]]*=[[:space:]]*${SEED1}[[:space:]]+${SEED2}" "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+          grep -Eq 'dose_to_water[[:space:]]+chamber_in_water[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then exit 1; fi
+
+      - name: Summarize Stage 5 point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, os, re
+          cfg=os.environ['CONFIG']; p=Path(f'stage5_logs/stage5_{cfg}.log')
+          out=Path(f'stage5_point_{cfg}.csv')
+          cols=['config','beam','applicator','ssd_cm','field_x_cm','field_y_cm','ncase','seed1','seed2','R_Qg','u_R_Qg_abs','u_R_Qg_pct','elapsed_s']
+          row={k:'NA' for k in cols}
+          row.update(config=cfg,beam=os.environ['BEAM'],applicator=os.environ['APPLICATOR'],ssd_cm=os.environ['SSD'],field_x_cm=os.environ['FIELD_X'],field_y_cm=os.environ['FIELD_Y'],ncase=os.environ['NCASE'],seed1=os.environ['SEED1'],seed2=os.environ['SEED2'])
+          if p.exists():
+              text=p.read_text(errors='replace')
+              m=re.findall(r'^dose_to_water\s+chamber_in_water\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)',text,re.M)
+              if m:
+                  r,u=map(float,m[-1]); row['R_Qg']=f'{r:.8g}'; row['u_R_Qg_abs']=f'{u:.8g}'; row['u_R_Qg_pct']=f'{100*u/r:.5f}'
+              me=re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s',text)
+              if me: row['elapsed_s']=me[-1]
+          with out.open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=cols); w.writeheader(); w.writerow(row)
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 5 point
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage5-terad-${{ matrix.config }}
+          path: |
+            stage5_configure.log
+            stage5_egs_chamber_build.log
+            stage5_inputs/*.egsinp
+            stage5_logs/*.log
+            stage5_point_*.csv
+          if-no-files-found: warn
+
+  summary:
+    name: Evaluate 12 TERAD water configurations
+    needs: water
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Download Stage 5 point summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage5-terad-Q*
+          path: stage5_downloads
+          merge-multiple: true
+
+      - name: Calculate kQ,Co and geometry response terms
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, math
+          RCO=1.12016676
+          URCO=0.00104473
+          rows=[]
+          for p in sorted(Path('stage5_downloads').glob('stage5_point_*.csv')):
+              with p.open(newline='') as f:
+                  r=next(csv.DictReader(f))
+              rows.append(r)
+          if len(rows) != 12:
+              raise SystemExit(f'Expected 12 Stage 5 points, found {len(rows)}')
+          parsed=[]
+          for r in rows:
+              if r['R_Qg']=='NA' or r['u_R_Qg_abs']=='NA':
+                  raise SystemExit(f"Missing valid Stage 5 result for {r['config']}")
+              x=float(r['R_Qg']); u=float(r['u_R_Qg_abs'])
+              if not (math.isfinite(x) and math.isfinite(u) and x>0 and u>0):
+                  raise SystemExit(f"Invalid Stage 5 result for {r['config']}")
+              k=x/RCO
+              uk=k*math.sqrt((u/x)**2+(URCO/RCO)**2)
+              d=dict(r)
+              d.update(k_Qg_Co=k,u_k_Qg_Co=uk)
+              parsed.append(d)
+          f50={r['beam']:r for r in parsed if r['applicator']=='F50'}
+          if set(f50) != {'Q120','Q140','Q150','Q200'}:
+              raise SystemExit('Missing one or more F50 denominators')
+          final=[]
+          intrinsic=[]
+          gate=True
+          for r in sorted(parsed,key=lambda x:(x['beam'],x['ssd_cm'],x['field_x_cm'],x['field_y_cm'])):
+              x=float(r['R_Qg']); u=float(r['u_R_Qg_abs'])
+              ref=f50[r['beam']]; xr=float(ref['R_Qg']); ur=float(ref['u_R_Qg_abs'])
+              if r['applicator']=='F50':
+                  kg=1.0; ukg=0.0
+              else:
+                  kg=x/xr
+                  ukg=kg*math.sqrt((u/x)**2+(ur/xr)**2)
+              upct=100*u/x
+              point_ok=upct<=1.0
+              gate=gate and point_ok
+              final.append({
+                  'config':r['config'],'beam':r['beam'],'applicator':r['applicator'],'ssd_cm':r['ssd_cm'],
+                  'field_cm':f"{r['field_x_cm']}x{r['field_y_cm']}",'R_Qg':f'{x:.8f}','u_R_Qg_abs':f'{u:.8f}',
+                  'u_R_Qg_pct':f'{upct:.4f}','k_Qg_Co':f"{r['k_Qg_Co']:.8f}",'u_k_Qg_Co':f"{r['u_k_Qg_Co']:.8f}",
+                  'k_g_vs_F50':f'{kg:.8f}','u_k_g_abs':f'{ukg:.8f}','point_gate':str(point_ok).lower()
+              })
+              if r['applicator']=='F50':
+                  intrinsic.append({'beam':r['beam'],'R_Q_F50':f'{x:.8f}','u_R_Q_abs':f'{u:.8f}','k_Q_Co':f"{r['k_Qg_Co']:.8f}",'u_k_Q_Co':f"{r['u_k_Qg_Co']:.8f}"})
+          fields=['config','beam','applicator','ssd_cm','field_cm','R_Qg','u_R_Qg_abs','u_R_Qg_pct','k_Qg_Co','u_k_Qg_Co','k_g_vs_F50','u_k_g_abs','point_gate']
+          with open('stage5_terad_water_summary.csv','w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(final)
+          with open('stage5_intrinsic_kq.csv','w',newline='') as f:
+              fields2=['beam','R_Q_F50','u_R_Q_abs','k_Q_Co','u_k_Q_Co']; w=csv.DictWriter(f,fieldnames=fields2); w.writeheader(); w.writerows(sorted(intrinsic,key=lambda x:x['beam']))
+          with open('stage5_gate.txt','w') as f:
+              f.write(f'gate_pass={str(gate).lower()}\n')
+              f.write('points=12\n')
+              f.write('criterion=max relative MC uncertainty per R_Qg <= 1.0%\n')
+              f.write(f'R_Co={RCO:.8f}\n')
+              f.write(f'u_R_Co={URCO:.8f}\n')
+          print(open('stage5_terad_water_summary.csv').read())
+          print(open('stage5_intrinsic_kq.csv').read())
+          print(open('stage5_gate.txt').read())
+          if not gate:
+              raise SystemExit('Stage 5 statistical gate failed for one or more points')
+          PY
+
+      - name: Upload Stage 5 production summary
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage5-terad-water-summary
+          path: |
+            stage5_terad_water_summary.csv
+            stage5_intrinsic_kq.csv
+            stage5_gate.txt
+          if-no-files-found: warn
