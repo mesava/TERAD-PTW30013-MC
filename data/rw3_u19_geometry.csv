@@ -1,0 +1,14 @@
+parameter,value,unit,source,interpretation
+phantom_type,29672,,PTW RW3 manual D188.131.00/03,30x30 cm slab phantom
+chamber_plate,29672/U19,,PTW RW3 manual Table 1,plate specified for PTW 30001/30002/30004/30006/30010/30011/30012/30013
+plate_thickness,20.0,mm,PTW RW3 manual Figure 5,additional chamber plate nominal thickness
+H1,7.0,mm,PTW RW3 manual Table 1,distance from one plate face to chamber axis
+H2,13.0,mm,PTW RW3 manual Table 1,distance from opposite plate face to chamber axis
+clinical_source_side,H2,,user setup + PTW U19 geometry,13 mm side faces the radiation source
+chamber_axis_depth,13.0,mm,derived from H2 orientation,physical RW3 depth of PTW30013 axis/reference point
+slab_thickness_tolerance,0.1,mm,PTW RW3 manual Technical Specifications,per slab nominal tolerance
+rw3_density,1.045,g/cm3,PTW RW3 manual Technical Specifications,manufacturer value
+electron_density_rel_water,1.012,,PTW RW3 manual Technical Specifications,manufacturer value
+mean_Z_over_A,0.536,,PTW RW3 manual Technical Specifications,manufacturer value
+TiO2_mass_fraction,2.0,percent,PTW RW3 manual Technical Specifications,nominal
+TiO2_mass_fraction_tolerance,0.4,percentage points,PTW RW3 manual Technical Specifications,manufacturer tolerance
