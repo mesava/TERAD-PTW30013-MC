@@ -4,8 +4,9 @@ chamber_plate,29672/U19,,PTW RW3 manual Table 1,plate specified for PTW 30001/30
 plate_thickness,20.0,mm,PTW RW3 manual Figure 5,additional chamber plate nominal thickness
 H1,7.0,mm,PTW RW3 manual Table 1,distance from one plate face to chamber axis
 H2,13.0,mm,PTW RW3 manual Table 1,distance from opposite plate face to chamber axis
-clinical_source_side,H2,,user setup + PTW U19 geometry,13 mm side faces the radiation source
-chamber_axis_depth,13.0,mm,derived from H2 orientation,physical RW3 depth of PTW30013 axis/reference point
+overlying_RW3_slabs,13.0,mm,user actual setup,additional RW3 thickness placed above the U19 plate
+clinical_U19_source_side,H1,,user actual setup + PTW U19 geometry,the chamber axis is 7 mm below the upper U19 face
+chamber_axis_depth,20.0,mm,derived from user setup,13 mm overlying slabs + 7 mm U19 H1 = 20 mm physical depth
 slab_thickness_tolerance,0.1,mm,PTW RW3 manual Technical Specifications,per slab nominal tolerance
 rw3_density,1.045,g/cm3,PTW RW3 manual Technical Specifications,manufacturer value
 electron_density_rel_water,1.012,,PTW RW3 manual Technical Specifications,manufacturer value
