@@ -1,0 +1,4 @@
+estimate,R_Co,u_abs,u_pct,z_rep,gate,note
+repA,1.12178000,0.00143000,0.1275,NA,NA,independent 300M Co-60 replication
+repB,1.11832000,0.00153000,0.1368,NA,NA,independent 300M Co-60 replication
+weighted,1.12016676,0.00104473,0.0933,+1.652,true,"N_D,w(Co-60)=5.389e7 Gy/C retained as certificate calibration metadata; not used to fit R_Co"
