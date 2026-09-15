@@ -1,130 +1,132 @@
-# Stage 8 — TERAD RW3 matched/direct transfer
+# Stage 8 — TERAD RW3 direct RW3→water production
 
-## Purpose
+## Status
 
-Stage 5 established the water reference response for all 12 TERAD configurations:
+**PASS — 12/12 clinical configurations.**
 
-`R_Q,g(water) = D_w / D_cav,water`.
+Workflow run: `34959596116`
 
-Stage 8 now calculates the same PTW 30013 Model B1 response in the real RW3 measurement geometry. Combining the new RW3 chamber score with the already persisted Stage 5 water score gives a direct mapping from the chamber reading in RW3 to absorbed dose to water.
+Head commit: `db2369c7d4ae45fc0002a2583d11773f8abad9e8`
 
-For each clinical configuration:
+Final gate:
 
-`k_RW3→w = D_cav,water / D_cav,RW3`
+- `gate_pass=true`
+- `points=12`
+- `max_u_R_direct_pct=0.44695`
+- `max_abs_direct_consistency_pct=0.00406`
 
-`R_Q,g^(RW3→w) = D_w,water / D_cav,RW3`
+## Geometry
 
-`k_Q,g,Co^(RW3→w) = R_Q,g^(RW3→w) / R_Co`
+Matched physical geometry is used between Stage 5 water and Stage 8 RW3:
 
-The calculation also scores:
+- PTW 30013 horizontal, axis perpendicular to beam, reference point on CAX, stem right;
+- RW3 phantom 29672, chamber plate 29672/U19;
+- U19 chamber axis is 7 mm below its upper face;
+- 13 mm additional RW3 is placed above U19;
+- total physical chamber-centre depth from phantom surface = **20 mm = 2.0 cm**;
+- SSD = 40 cm for F40 applicators and 50 cm for F50, measured to phantom surface;
+- applicator contacts phantom surface;
+- same 12 clinical Q/applicator configurations as Stage 5.
 
-`R_Q,g(RW3) = D_RW3 / D_cav,RW3`
+Thus Stage 5 and Stage 8 preserve the same SSD, field definition and 2.0 cm physical reference-point depth; the intended material change is water → RW3.
 
-and the matched medium ratio:
-
-`D_w,water / D_RW3`.
-
-The water numerator is not recomputed: `results/stage5_absolute_scores.csv` preserves the absolute Stage 5 `D_w/history` and `D_cav,water/history` scores.
-
-## Real RW3 geometry
-
-User-supplied geometry is authoritative:
-
-- RW3 transverse size: 30 × 30 cm²;
-- PTW 30013 horizontal;
-- chamber axis perpendicular to beam CAX;
-- chamber reference point on CAX;
-- stem to the right;
-- 1.3 cm RW3 physically above the chamber body;
-- approximately 10 cm RW3 below/downstream of the chamber region;
-- applicator in contact with the RW3 surface;
-- F40 SSD = 40 cm; F50 SSD = 50 cm.
-
-For the fixed Model B1 outer chamber radius 0.3475 cm, the nominal physical centre depth is therefore
-
-`1.3 + 0.3475 = 1.6475 cm`.
-
-This is the direct physical geometry corresponding to the user's experimentally stated 2.0 cm water-equivalent chamber-centre depth. No artificial movement to 2.0 cm physical depth is made in RW3.
-
-The nominal downstream boundary is placed 10 cm below the chamber body, i.e. at `z = +10.3475 cm` relative to chamber centre.
+The former draft interpretation `1.3 cm + chamber radius = 1.6475 cm` is superseded and is not used in the accepted production run.
 
 ## RW3 nominal material model
 
-The user's slab composition has not been independently chemically measured. Stage 8 therefore uses an explicit nominal material model, separate from the hard geometry inputs:
+Manufacturer anchors used by the nominal calculation:
 
-- density = 1.045 g/cm³;
-- H mass fraction = 0.0759;
-- C mass fraction = 0.9041;
-- O mass fraction = 0.0080;
-- Ti mass fraction = 0.0120;
-- equivalent description: approximately 98% polystyrene + 2% TiO2 by mass.
+- density = `1.045 g/cm3`;
+- polystyrene `(C8H8)` with nominal `2.0% TiO2` by mass;
+- manufacturer TiO2 tolerance = `±0.4 percentage points`;
+- electron density = `1.012 × water`;
+- mean `Z/A = 0.536`.
 
-This composition is stored in `data/rw3_nominal_material.csv` and must be treated as a model assumption with a later material sensitivity/uncertainty contribution.
+The nominal EGSnrc elemental mass fractions are:
 
-PTW describes RW3 as water-equivalent for high-energy therapy beams (photon range starting at Co-60), not specifically for 120–200 kV. Therefore low-energy equivalence is not assumed; it is calculated here.
+- H = 0.0759
+- C = 0.9041
+- O = 0.0080
+- Ti = 0.0120
 
-## Source / applicator model
+The TiO2 tolerance is not fitted; it is reserved for sensitivity/uncertainty propagation.
 
-The same accepted TERAD spectra and the same aperture convention as Stage 5 are used.
+## Definitions
 
-The source-to-RW3-surface distance remains the clinical SSD. Because the chamber centre is at 1.6475 cm physical depth in RW3, the source position relative to the chamber centre is:
+Stage 5 supplies matched-water absolute scores:
 
-- F40: z = -41.6475 cm;
-- F50: z = -51.6475 cm.
+`D_w,water / history` and `D_cav,water / history`.
 
-The applicator field is specified at the RW3 surface and projected to the chamber reference plane.
+Stage 8 supplies:
 
-As in Stage 5, proprietary applicator-wall material/thickness/internal geometry is not known and is not invented.
+`D_RW3 / history` and `D_cav,RW3 / history`.
 
-## Chamber / transport model
+Derived quantities:
 
-- PTW 30013 Model B1 is unchanged;
-- cavity mass = `7.832972283369083e-04 g`;
-- EGSnrc commit = `f4d029f625a6c96ef3456e0b6d91d46ffce613e7`;
-- PCUT = 0.001 MeV;
-- ECUT = 0.512 MeV;
-- XCSE = 64;
-- Russian Roulette = 64;
-- Radiative Compton = On;
-- TmpPhsp/IPSS architecture retained.
+`R_RW3 = D_RW3 / D_cav,RW3`
 
-The local variance-reduction shell around the chamber and the RW3 scoring target use RW3 material, not water.
+`D_w/D_RW3 = D_w,water / D_RW3`
 
-## Production statistics
+`k_RW3→water = D_cav,water / D_cav,RW3`
 
-Nominal production run:
+Direct response for a chamber reading made in RW3 but reported as absorbed dose to water:
 
-- 12 clinical configurations;
-- 300M histories each;
-- 30 batches;
-- max 4 concurrent jobs.
+`R_Q,g^(RW3→w) = D_w,water / D_cav,RW3`
 
-Predeclared gate for the direct clinical transfer coefficient:
+Clinical Co-60-referenced coefficient:
 
-`u(R_Q,g^(RW3→w)) / R_Q,g^(RW3→w) <= 1%`.
+`k_Q,g,Co^(RW3→w) = R_Q,g^(RW3→w) / R_Co`
 
-## Outputs
+with fixed Stage 4 denominator:
 
-For all 12 configurations the summary will contain:
+`R_Co = 1.12016676 ± 0.00104473`.
 
-- `D_w,water/history` from Stage 5;
-- `D_cav,water/history` from Stage 5;
-- `D_RW3/history` from Stage 8;
-- `D_cav,RW3/history` from Stage 8;
-- `D_w/D_RW3`;
-- `k_RW3→w`;
-- `R_Q,g^(RW3→w)`;
-- `k_Q,g,Co^(RW3→w)`;
-- MC statistical uncertainties;
-- point gate.
+## Results
 
-## What this stage does not yet close
+| Config | R_RW3 | u(R_direct), % | k_RW3→water | R_direct RW3→water | k_Q,g,Co direct RW3→water |
+|---|---:|---:|---:|---:|---:|
+| Q120 F40 4×15 | 0.89289 | 0.40342 | 0.965005 | 1.013484 | 0.904762 |
+| Q120 F40 6×8 | 0.89038 | 0.35439 | 0.968267 | 1.010743 | 0.902315 |
+| Q120 F50 8×10 | 0.88214 | 0.43834 | 0.952711 | 0.997722 | 0.890691 |
+| Q140 F40 4×15 | 0.92978 | 0.40910 | 0.978303 | 1.038613 | 0.927195 |
+| Q140 F40 6×8 | 0.92316 | 0.35831 | 0.981353 | 1.032862 | 0.922061 |
+| Q140 F50 8×10 | 0.91029 | 0.44128 | 0.957577 | 1.014479 | 0.905650 |
+| Q150 F40 4×15 | 0.97106 | 0.41086 | 0.983063 | 1.062059 | 0.948126 |
+| Q150 F40 6×8 | 0.97307 | 0.36203 | 0.996552 | 1.064590 | 0.950385 |
+| Q150 F50 8×10 | 0.95578 | 0.44695 | 0.976071 | 1.045640 | 0.933468 |
+| Q200 F40 4×15 | 1.01466 | 0.39851 | 0.994113 | 1.083798 | 0.967533 |
+| Q200 F40 6×8 | 1.00819 | 0.35164 | 0.987655 | 1.076843 | 0.961324 |
+| Q200 F50 8×10 | 1.00702 | 0.43440 | 0.989742 | 1.074094 | 0.958870 |
 
-After nominal Stage 8, the following remain uncertainty/sensitivity tasks rather than hidden tuning parameters:
+Full-precision values are persisted in `results/stage8_rw3_direct_summary.csv`; gate metadata are in `results/stage8_gate.txt`.
 
-- RW3 composition / TiO2 fraction and density;
-- exact slab/adaptor geometry around the chamber;
-- exact rectangular-field orientation relative to chamber axis;
-- proprietary applicator-body scatter;
-- spectrum non-uniqueness at fixed measured HVL;
-- residual PTW30013 model-form uncertainty.
+## Internal consistency check
+
+The direct expression
+
+`D_w,water / D_cav,RW3`
+
+was compared with the factorized form
+
+`(D_w,water / D_cav,water) × (D_cav,water / D_cav,RW3)`.
+
+The maximum absolute discrepancy over all 12 configurations was only:
+
+**0.00406%**.
+
+This confirms numerical consistency of the Stage 5 → Stage 8 transfer architecture within the MC precision of the calculation.
+
+## Interpretation
+
+The nominal direct clinical coefficients increase with beam quality, from approximately 0.89–0.90 at Q120 to 0.96–0.97 at Q200, while retaining a non-negligible geometry/applicator dependence.
+
+These are **nominal production coefficients**, not yet the final uncertainty-qualified clinical values. They still require sensitivity propagation for at least:
+
+1. RW3 TiO2 composition tolerance;
+2. RW3 geometric/slab-position uncertainty and possible air gaps;
+3. rectangular-field orientation relative to the chamber axis;
+4. TERAD spectrum ambiguity compatible with measured HVL;
+5. chamber-model uncertainty already constrained by the Czarnecki benchmark;
+6. missing proprietary applicator-wall/head-scatter geometry.
+
+No nominal parameter is to be retuned to reduce these uncertainty contributions.
