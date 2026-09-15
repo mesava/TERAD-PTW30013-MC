@@ -1,0 +1,2 @@
+model_id,density_g_cm3,H_mass_fraction,C_mass_fraction,O_mass_fraction,Ti_mass_fraction,basis,status
+RW3_nominal,1.045,0.0759,0.9041,0.0080,0.0120,"98% polystyrene + 2% TiO2 by mass; elemental fractions from published RW3 composition","nominal literature/manufacturer-informed model; not a lot-specific measurement of the user's slabs"
