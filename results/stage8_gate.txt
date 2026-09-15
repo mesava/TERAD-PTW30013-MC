@@ -1,0 +1,4 @@
+gate_pass=true
+points=12
+max_u_R_direct_pct=0.44695
+max_abs_direct_consistency_pct=0.00406
