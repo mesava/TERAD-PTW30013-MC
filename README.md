@@ -2,44 +2,46 @@
 
 Monte Carlo проект для определения chamber-specific коэффициентов коррекции для **PTW 30013** на киловольтном рентгенотерапевтическом аппарате **TERAD**.
 
-> **Текущий статус:** PTW 30013 **Model B1 benchmark-validated** по CCRI100/135/180/250. **Stage 4 Co-60 завершён PASS**: `R_Co = 1.12016676 ± 0.00104473`. Запущен **Stage 5 — 12 TERAD matched-water production calculations**, run `34931189724`.
+> **Текущий статус:** PTW 30013 **Model B1 benchmark-validated** по CCRI100/135/180/250. **Stage 4 Co-60 — PASS**: `R_Co = 1.12016676 ± 0.00104473`. **Stage 5 TERAD matched-water — PASS: 12/12 конфигураций**. Следующий production-блок — **реальная RW3-геометрия и прямой RW3→water transfer**.
 
-## Основные определения
+## Базовая задача
 
-`R_Q,g = (D_w / D_cav)_(Q,g)`
-
-`k_Q,g,Co = R_Q,g / R_Co`
-
-Для внутреннего geometry-normalization по каждому качеству Q:
-
-`k_g,Q(g) = R_Q,g / R_Q,F50`
-
-F50 рассчитывается как полноценная клиническая конфигурация и только после этого используется как denominator для `k_g`.
-
-Индивидуальный calibration metadata для PTW 30013 SN 013488:
+Камера PTW 30013 SN 013488 имеет calibration coefficient в Co-60:
 
 `N_D,w(Co-60) = 5.389e7 Gy/C`.
 
-## Канонические входные данные TERAD
+Задача проекта — определить, как по показанию этой камеры в реальной TERAD/RW3-геометрии получить absorbed dose to water для каждого качества пучка и каждого клинического аппликатора.
 
-Авторитетные файлы:
+Основные определения:
 
-- `docs/CANONICAL_MC_TASK.md`
-- `data/beam_qualities.csv`
-- `data/terad_clinical_geometries.csv`
+`R_Q,g = (D_w / D_cav)_(Q,g)`
 
-| Beam | kV | mA | Measured HVL1 | Added clinical filter |
+`R_Co = (D_w / D_cav)_Co`
+
+`k_Q,g,Co = R_Q,g / R_Co`
+
+Для внутреннего сравнения геометрий при одном качестве Q:
+
+`k_g,Q(g) = R_Q,g / R_Q,F50`
+
+Для следующего блока будет дополнительно определён direct RW3→water response:
+
+`R_Q,g^(RW3→w) = D_w^(matched water) / D_cav^(RW3)`
+
+и соответствующий клинический коэффициент:
+
+`k_Q,g,Co^(RW3→w) = R_Q,g^(RW3→w) / R_Co`.
+
+## Канонические TERAD inputs
+
+| Beam | kV | mA | Measured HVL1 | Added filter |
 |---|---:|---:|---:|---|
 | Q120 | 120 | 10 | **0.224 mm Cu** | 4.0 mm Al |
 | Q140 | 140 | 10 | **0.410 mm Cu** | 0.2 mm Cu |
 | Q150 | 150 | 10 | **0.729 mm Cu** | 0.5 mm Cu |
 | Q200 | 200 | 7 | **1.452 mm Cu** | 1.0 mm Cu |
 
-Ошибочная диагностическая ветка HVL `0.12198 / 0.22715 / 0.77398 / 1.11223 mm Cu` не относится к production calculations.
-
-## 12 клинических конфигураций
-
-Для каждого Q120/Q140/Q150/Q200 рассчитываются:
+Для каждого качества рассчитываются три реальные клинические конфигурации:
 
 | Applicator | SSD | Field |
 |---|---:|---:|
@@ -47,11 +49,17 @@ F50 рассчитывается как полноценная клиничес�
 | F40 | 40 cm | 4 × 15 cm² |
 | F50 | 50 cm | 8 × 10 cm² |
 
-Итого **12 kV/applicator combinations**.
+Итого **12 Q/applicator combinations**.
 
-## Production spectra
+Авторитетные файлы:
 
-Первый принятый TERAD spectrum model:
+- `docs/CANONICAL_MC_TASK.md`
+- `data/beam_qualities.csv`
+- `data/terad_clinical_geometries.csv`
+
+## Production spectra ✅
+
+Принятый first-pass TERAD spectrum model:
 
 - SpekPy 2.5.4;
 - W reflection target;
@@ -70,7 +78,9 @@ F50 рассчитывается как полноценная клиничес�
 
 Result: `results/spekpy_fit_summary.csv`.
 
-## PTW 30013 Model B1
+Один HVL не определяет spectrum однозначно; spectrum ambiguity остаётся отдельным uncertainty contribution.
+
+## PTW 30013 Model B1 ✅ benchmark-validated
 
 Model B1 — public/aggregate surrogate, а не manufacturer blueprint.
 
@@ -85,16 +95,9 @@ Model B1 — public/aggregate surrogate, а не manufacturer blueprint.
 - reference point = 13.0 mm от physical tip;
 - cavity mass = `7.832972283369083e-04 g`.
 
-Точная proprietary geometry guard/insulator/electrode-base/stem-transition неизвестна и не выдумывается.
+Точная proprietary geometry guard/insulator/electrode-base/stem-transition не выдумывается и учитывается как model limitation.
 
-## Benchmark validation ✅
-
-Published midpoint targets:
-
-- `k100,250 = 0.95355`
-- `k135,250 = 0.97460`
-- `k180,250 = 0.98565`
-- `k250,250 = 1`
+### Benchmark validation
 
 | Quality | MC weighted | u(k) | Target | Δ | z_vs_pub | z_rep |
 |---|---:|---:|---:|---:|---:|---:|
@@ -102,17 +105,17 @@ Published midpoint targets:
 | CCRI135/250 | **0.97168791** | 0.00415738 | 0.97460 | -0.2988% | -0.700 | -0.959 |
 | CCRI180/250 | **0.98774017** | 0.00419134 | 0.98565 | +0.2121% | +0.499 | +0.478 |
 
-Model B1 прошла заранее заданные endpoint/intermediate gates без дальнейшей подгонки.
+**Итог:** Model B1 прошла endpoint и intermediate validation без подгонки геометрии после получения результатов.
 
 ## Stage 4 — Co-60 anchor ✅ PASS
 
 Reference geometry:
 
-- SDD 100 cm;
-- SSD 95 cm;
-- depth 5 cm water;
-- 10×10 cm² at reference plane;
-- 30×30×30 cm³ water;
+- SDD = 100 cm;
+- SSD = 95 cm;
+- depth = 5 cm water;
+- field = 10×10 cm² at reference point;
+- water phantom = 30×30×30 cm³;
 - two independent 300M-history replications.
 
 Run `34849606671`:
@@ -126,58 +129,93 @@ Run `34849606671`:
 
 Persisted result: `results/stage4_co60_summary.csv`.
 
-## Stage 5 — TERAD matched-water production 🟡 ACTIVE
+## Stage 5 — TERAD matched-water ✅ PASS
 
-Workflow: `.github/workflows/stage5-terad-water.yml`
-
-Run: **`34931189724`**
+Workflow run: **`34931189724`**.
 
 Design:
 
-- all **12** canonical Q/applicator configurations;
-- 300M histories / 30 batches per configuration;
+- 12/12 canonical Q/applicator configurations;
+- 300M histories / 30 batches per point;
 - fixed benchmark-validated Model B1;
-- accepted SpekPy TERAD spectra regenerated deterministically at runtime;
-- chamber centre depth = 2.0 cm water;
+- accepted TERAD spectra;
+- chamber centre at 2.0 cm depth in water;
 - 30×30 cm² water phantom;
-- 10 cm water downstream of chamber centre;
-- explicit air path from source to phantom surface;
-- SSD = 40 or 50 cm as defined by applicator;
+- explicit air path;
+- clinical SSD 40/50 cm;
 - field aperture specified at phantom surface and projected to chamber reference plane.
 
 Predeclared point gate:
 
 `u(R_Q,g) / R_Q,g <= 1.0%`.
 
-Outputs after completion:
+**Все 12/12 точек прошли gate.**
 
-- all 12 `R_Q,g`;
-- all 12 `k_Q,g,Co`;
-- F50-based `k_g,Q` for both F40 geometries;
-- intrinsic F50 `k_Q,Co` for Q120/Q140/Q150/Q200.
+| Config | R_Q,g | u(R), % | k_Q,g,Co | k_g vs F50 |
+|---|---:|---:|---:|---:|
+| Q120 F40 6×8 | 1.04389 | 0.3583 | 0.93190589 | 0.99678208 |
+| Q120 F40 4×15 | 1.05025 | 0.4085 | 0.93758361 | 1.00285507 |
+| Q120 F50 8×10 | 1.04726 | 0.4478 | 0.93491437 | 1.00000000 |
+| Q140 F40 6×8 | 1.05251 | 0.3620 | 0.93960117 | 0.99347756 |
+| Q140 F40 4×15 | 1.06164 | 0.4126 | 0.94775174 | 1.00209549 |
+| Q140 F50 8×10 | 1.05942 | 0.4474 | 0.94576990 | 1.00000000 |
+| Q150 F40 6×8 | 1.06825 | 0.3632 | 0.95365265 | 0.99715299 |
+| Q150 F40 4×15 | 1.08036 | 0.4147 | 0.96446354 | 1.00845701 |
+| Q150 F50 8×10 | 1.07130 | 0.4490 | 0.95637546 | 1.00000000 |
+| Q200 F40 6×8 | 1.09033 | 0.3522 | 0.97336400 | 1.00472724 |
+| Q200 F40 4×15 | 1.09022 | 0.3990 | 0.97326580 | 1.00462588 |
+| Q200 F50 8×10 | 1.08520 | 0.4349 | 0.96878433 | 1.00000000 |
 
-Full method: `docs/STAGE5_TERAD_WATER.md`.
+Intrinsic F50 beam-quality coefficients:
 
-### Current modelling limitation
+- `k_120,Co = 0.93491437 ± 0.00427671`
+- `k_140,Co = 0.94576990 ± 0.00432247`
+- `k_150,Co = 0.95637546 ± 0.00438567`
+- `k_200,Co = 0.96878433 ± 0.00430944`
 
-The supplied clinical data define applicator aperture and SSD but do not include applicator-wall material/thickness/internal geometry. Stage 5 therefore models the real supplied **field/SSD/aperture geometry**, but does not claim proprietary applicator-body scatter.
+Persisted files:
 
-For rectangular fields, until physical orientation is independently confirmed, Stage 5 uses the explicit convention: first field dimension along chamber axis/stem, second dimension perpendicular. This remains a geometry sensitivity item, not a manufacturer fact.
+- `results/stage5_terad_water_summary.csv`
+- `results/stage5_intrinsic_kq.csv`
+- `results/stage5_gate.txt`
+- `results/stage5_absolute_scores.csv`
+- `docs/STAGE5_TERAD_WATER.md`
 
-## RW3 geometry for later stages
+`results/stage5_absolute_scores.csv` additionally preserves `D_w/history` and `D_cav,water/history` for direct matched-medium transfer calculations, so water MC does not have to be repeated in the RW3 block.
 
-- RW3 transverse size 30×30 cm²;
+### Stage 5 modelling limits
+
+The supplied clinical data define SSD and aperture but not proprietary applicator-wall material/thickness/internal geometry. Stage 5 therefore models field/SSD/aperture geometry, not unknown applicator-body scatter.
+
+For rectangular fields the current explicit convention is: first listed field dimension along chamber axis/stem and second dimension perpendicular. Orientation remains a geometry-sensitivity item.
+
+## Next production block — RW3 matched / direct end-to-end 🟡
+
+Real measurement geometry supplied by the user:
+
+- RW3 transverse size = 30×30 cm²;
 - PTW 30013 horizontal;
 - chamber axis perpendicular to beam;
-- reference point on central axis;
+- reference point on CAX;
 - stem right;
-- centre at 2.0 cm water-equivalent depth;
-- 1.3 cm RW3 physically above chamber body in the supplied setup;
-- approximately 10 cm downstream RW3;
-- lateral margin at least 10 cm;
-- applicator contacts phantom surface.
+- **1.3 cm RW3 physically above the chamber body**;
+- this corresponds experimentally to **2.0 cm water-equivalent chamber-centre depth**;
+- approximately 10 cm RW3 downstream;
+- applicator contacts RW3 surface;
+- SSD = 40 or 50 cm from source to RW3 surface.
 
-All 12 configurations require matched RW3 and direct end-to-end calculations after Stage 5.
+The nominal RW3 material model for MC is documented separately and is treated as a material-model assumption, not as a measured composition of the user's individual slab set. PTW specifies RW3 as water-equivalent for high-energy photon/electron ranges, not specifically for 120–200 kV; therefore a dedicated kV transfer calculation is required.
+
+The direct calculation will determine for each of the 12 configurations:
+
+- `D_cav,RW3 / history`;
+- `D_RW3 / history` at the chamber reference point;
+- matched `D_w / D_RW3`;
+- `k_RW3→w = D_cav,water / D_cav,RW3`;
+- `R_Q,g^(RW3→w) = D_w,water / D_cav,RW3`;
+- `k_Q,g,Co^(RW3→w) = R_Q,g^(RW3→w) / R_Co`.
+
+This provides the direct coefficient needed to convert a chamber reading obtained in the real RW3 setup to absorbed dose to water.
 
 ## EGSnrc
 
@@ -192,31 +230,23 @@ Validated transport architecture uses low-energy photon transport, Radiative Com
 | Stage | Content | Status |
 |---:|---|---|
 | 0 | EGSnrc / egs_chamber infrastructure | ✅ |
-| 1 | TERAD production spectra | ✅ accepted first-pass model |
+| 1 | TERAD production spectra | ✅ |
 | 2–3 | PTW 30013 chamber benchmark | ✅ Model B1 validated |
 | 3H-4 | CCRI100/250 high-stat | ✅ PASS |
 | 3H-5 | CCRI135/180 independent validation | ✅ PASS |
 | 4 | Co-60 `R_Co` | ✅ PASS |
-| 5 | 12 TERAD matched-water `R_Q,g` | 🟡 ACTIVE |
-| 6 | spectrum/chamber sensitivity | ⏸ |
-| 7 | geometry refinements / applicator sensitivity | ⏸ |
-| 8 | RW3-to-water + 12 direct end-to-end | ⏸ |
+| 5 | 12 TERAD matched-water `R_Q,g` | ✅ 12/12 PASS |
+| 6 | spectrum/chamber sensitivity | ⏸ nominal production first |
+| 7 | applicator/orientation sensitivity | ⏸ nominal production first |
+| 8 | RW3-to-water + 12 direct end-to-end | 🟡 next/active block |
 | 9 | final coefficients + uncertainty budget | ⏸ |
-
-## Production path
-
-1. Complete Stage 5 water calculations for all 12 configurations.
-2. Review spectrum/chamber/field-orientation sensitivity without fitting to desired values.
-3. Perform matched RW3 calculations.
-4. Derive RW3-to-water response.
-5. Perform direct 12-configuration RW3 end-to-end checks.
-6. Produce final coefficients and uncertainty budget.
 
 ## Project rules
 
 - measured TERAD HVLs are not changed to improve agreement;
 - chamber geometry is not tuned after benchmark validation;
-- one HVL does not uniquely determine a spectrum, so spectral ambiguity is evaluated separately;
-- F50 is never treated as reference-only;
-- technical CI failure is not a physical MC failure;
-- missing proprietary applicator/chamber dimensions are documented as limitations, not invented.
+- one HVL does not uniquely determine a spectrum;
+- F50 is a real clinical configuration, not reference-only;
+- technical CI failure is not interpreted as a physical MC failure;
+- missing proprietary dimensions are documented as limitations, not invented;
+- RW3 composition/density assumptions must be separated from user-measured geometry and propagated as model uncertainty.
