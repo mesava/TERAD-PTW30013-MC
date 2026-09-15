@@ -5,8 +5,9 @@ RW3 geometry/material anchors:
 - PTW RW3 manual D188.131.00/03;
 - chamber plate 29672/U19 for PTW 30013;
 - U19 chamber-axis offsets H1=7 mm and H2=13 mm in the 20 mm plate;
-- the user's measurement orientation uses the H2=13 mm side toward the source,
-  therefore the chamber axis/reference point depth is 13 mm physical RW3;
+- in the user's actual setup the chamber axis is 7 mm below the upper face of U19,
+  with an additional 13 mm RW3 slab stack placed above that face;
+- therefore the physical surface-to-axis/reference-point depth is 13 + 7 = 20 mm;
 - RW3 material is polystyrene (C8H8) with nominal 2% TiO2 by mass,
   density 1.045 g/cm3. The manufacturer tolerance 2.0 +/- 0.4% TiO2 is
   retained for later material sensitivity and is not fitted here.
@@ -24,7 +25,8 @@ RW3_O = 0.0080
 RW3_TI = 0.0120
 U19_H1_CM = 0.7
 U19_H2_CM = 1.3
-CENTER_DEPTH_CM = U19_H2_CM
+OVERLYING_RW3_CM = 1.3
+CENTER_DEPTH_CM = OVERLYING_RW3_CM + U19_H1_CM  # 2.0 cm physical
 DOWNSTREAM_Z_CM = 10.0  # canonical approximate downstream RW3 from chamber axis
 
 
@@ -167,7 +169,7 @@ def main() -> None:
         lambda s: s.replace("WATER_1KEV", "RW3_NOMINAL"),
     )
 
-    # Direct physical U19 RW3 geometry: chamber axis/reference point at 13 mm.
+    # Direct physical U19 RW3 geometry: 13 mm overlying slabs + 7 mm in U19 = 20 mm.
     surface_z = -CENTER_DEPTH_CM
     source_z = -(args.ssd + CENTER_DEPTH_CM)
     downstream_z = DOWNSTREAM_Z_CM
@@ -280,8 +282,9 @@ def main() -> None:
     out.write_text(text)
 
     print(f"Wrote {out}")
-    print(f"beam={args.beam}; SSD={args.ssd:g} cm; U19 physical chamber-axis depth={CENTER_DEPTH_CM:.4f} cm")
-    print(f"U19 H1={U19_H1_CM:.4f} cm; H2={U19_H2_CM:.4f} cm; H2 side toward source")
+    print(f"beam={args.beam}; SSD={args.ssd:g} cm; physical chamber-axis depth={CENTER_DEPTH_CM:.4f} cm")
+    print(f"overlying RW3={OVERLYING_RW3_CM:.4f} cm + U19 H1={U19_H1_CM:.4f} cm = {CENTER_DEPTH_CM:.4f} cm")
+    print(f"U19 H1={U19_H1_CM:.4f} cm; H2={U19_H2_CM:.4f} cm")
     print(f"surface field={args.field_x:g}x{args.field_y:g} cm2")
     print(f"reference-plane projected field={2*hx:.6f}x{2*hy:.6f} cm2")
     print(f"source z={source_z:.4f}; RW3 surface z={surface_z:.4f}; downstream z={downstream_z:.4f}")
