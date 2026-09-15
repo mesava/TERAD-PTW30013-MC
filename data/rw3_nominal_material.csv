@@ -1,2 +1,2 @@
-model_id,density_g_cm3,H_mass_fraction,C_mass_fraction,O_mass_fraction,Ti_mass_fraction,basis,status
-RW3_nominal,1.045,0.0759,0.9041,0.0080,0.0120,"98% polystyrene + 2% TiO2 by mass; elemental fractions from published RW3 composition","nominal literature/manufacturer-informed model; not a lot-specific measurement of the user's slabs"
+model_id,density_g_cm3,TiO2_mass_fraction,TiO2_tolerance_abs,electron_density_rel_water,mean_Z_over_A,H_mass_fraction,C_mass_fraction,O_mass_fraction,Ti_mass_fraction,basis,status
+RW3_PTW_manual,1.045,0.020,0.004,1.012,0.536,0.0759,0.9041,0.0080,0.0120,"PTW RW3 manual D188.131.00/03: polystyrene (C8H8) containing 2.0% +/-0.4% TiO2 by mass; density 1.045 g/cm3; elemental fractions derived from nominal 98% polystyrene + 2% TiO2","manufacturer-specified nominal composition; TiO2 tolerance retained for later sensitivity"
