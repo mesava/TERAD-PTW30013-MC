@@ -1,0 +1,393 @@
+name: Stage 8 TERAD RW3 direct production
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage8-terad-rw3-direct.yml'
+      - 'scripts/build_stage8_terad_rw3_b1.py'
+      - 'scripts/generate_spekpy_spectra.py'
+      - 'data/rw3_nominal_material.csv'
+      - 'data/beam_qualities.csv'
+      - 'data/terad_clinical_geometries.csv'
+      - 'results/stage5_absolute_scores.csv'
+
+jobs:
+  preflight:
+    name: Preflight all 12 RW3 inputs
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile builder
+        run: python -m py_compile scripts/build_stage8_terad_rw3_b1.py
+
+      - name: Generate all 12 nominal RW3 inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/stage8_preflight
+          configs=(
+            'Q120 40 6 8 3101 4101'
+            'Q120 40 4 15 3102 4102'
+            'Q120 50 8 10 3103 4103'
+            'Q140 40 6 8 3201 4201'
+            'Q140 40 4 15 3202 4202'
+            'Q140 50 8 10 3203 4203'
+            'Q150 40 6 8 3301 4301'
+            'Q150 40 4 15 3302 4302'
+            'Q150 50 8 10 3303 4303'
+            'Q200 40 6 8 3401 4401'
+            'Q200 40 4 15 3402 4402'
+            'Q200 50 8 10 3403 4403'
+          )
+          i=0
+          for c in "${configs[@]}"; do
+            read -r beam ssd fx fy s1 s2 <<< "$c"
+            i=$((i+1))
+            out="/tmp/stage8_preflight/${beam}_${ssd}_${fx}x${fy}.egsinp"
+            python scripts/build_stage8_terad_rw3_b1.py \
+              --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+              --output "$out" --beam "$beam" --ssd "$ssd" --field-x "$fx" --field-y "$fy" \
+              --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 "$s1" --seed2 "$s2"
+            grep -Fq 'name = rw3_phantom' "$out"
+            grep -Fq 'name = chamber_in_rw3' "$out"
+            grep -Fq 'name = dose_to_rw3' "$out"
+            grep -Fq 'bulk density = 1.045000' "$out"
+            grep -Fq 'cavity mass = 7.832972283369083e-04' "$out"
+          done
+          test "$i" -eq 12
+
+  spectra:
+    name: Generate accepted TERAD spectra
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install spectrum dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' numpy scipy
+
+      - name: Generate accepted spectra
+        run: |
+          python scripts/generate_spekpy_spectra.py
+          test -s spectra/Q120.ensrc
+          test -s spectra/Q140.ensrc
+          test -s spectra/Q150.ensrc
+          test -s spectra/Q200.ensrc
+
+      - name: Upload TERAD spectra
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8-terad-spectra
+          path: |
+            spectra/*.ensrc
+            spectra/*_spekpy.csv
+            results/spekpy_fit_summary.csv
+
+  rw3:
+    name: ${{ matrix.config }} / RW3 / 300M
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {config: Q120_F40_6x8,  beam: Q120, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  seed1: '3101', seed2: '4101'}
+          - {config: Q120_F40_4x15, beam: Q120, applicator: F40, ssd: '40', field_x: '4', field_y: '15', seed1: '3102', seed2: '4102'}
+          - {config: Q120_F50_8x10, beam: Q120, applicator: F50, ssd: '50', field_x: '8', field_y: '10', seed1: '3103', seed2: '4103'}
+          - {config: Q140_F40_6x8,  beam: Q140, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  seed1: '3201', seed2: '4201'}
+          - {config: Q140_F40_4x15, beam: Q140, applicator: F40, ssd: '40', field_x: '4', field_y: '15', seed1: '3202', seed2: '4202'}
+          - {config: Q140_F50_8x10, beam: Q140, applicator: F50, ssd: '50', field_x: '8', field_y: '10', seed1: '3203', seed2: '4203'}
+          - {config: Q150_F40_6x8,  beam: Q150, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  seed1: '3301', seed2: '4301'}
+          - {config: Q150_F40_4x15, beam: Q150, applicator: F40, ssd: '40', field_x: '4', field_y: '15', seed1: '3302', seed2: '4302'}
+          - {config: Q150_F50_8x10, beam: Q150, applicator: F50, ssd: '50', field_x: '8', field_y: '10', seed1: '3303', seed2: '4303'}
+          - {config: Q200_F40_6x8,  beam: Q200, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  seed1: '3401', seed2: '4401'}
+          - {config: Q200_F40_4x15, beam: Q200, applicator: F40, ssd: '40', field_x: '4', field_y: '15', seed1: '3402', seed2: '4402'}
+          - {config: Q200_F50_8x10, beam: Q200, applicator: F50, ssd: '50', field_x: '8', field_y: '10', seed1: '3403', seed2: '4403'}
+    env:
+      EGSRUN: /tmp/EGSnrc
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      CONFIG: ${{ matrix.config }}
+      BEAM: ${{ matrix.beam }}
+      APPLICATOR: ${{ matrix.applicator }}
+      SSD: ${{ matrix.ssd }}
+      FIELD_X: ${{ matrix.field_x }}
+      FIELD_Y: ${{ matrix.field_y }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Download accepted TERAD spectra
+        uses: actions/download-artifact@v4
+        with:
+          name: stage8-terad-spectra
+          path: stage8_spectra
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install EGSnrc prerequisites
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y git gcc g++ gfortran make tk grace libmotif-dev expect qtbase5-dev
+
+      - name: Clone pinned EGSnrc 2026 release
+        run: |
+          rm -rf "$EGSRUN"
+          git clone https://github.com/nrc-cnrc/EGSnrc.git "$EGSRUN"
+          cd "$EGSRUN"
+          git checkout f4d029f625a6c96ef3456e0b6d91d46ffce613e7
+          test "$(git rev-parse HEAD)" = "f4d029f625a6c96ef3456e0b6d91d46ffce613e7"
+
+      - name: Configure EGSnrc
+        shell: bash
+        run: |
+          cd "$EGSRUN"
+          export USER=runner
+          export EGS_BASE="$PWD"
+          set -o pipefail
+          ./HEN_HOUSE/scripts/configure.expect gha.conf 3 2>&1 | tee "$GITHUB_WORKSPACE/stage8_configure.log"
+
+      - name: Build egs_chamber with radiative Compton support
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          cd "$EGS_HOME/egs_chamber"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('Makefile')
+          text=p.read_text()
+          old='CPP_SOURCES = $(C_ADVANCED_SOURCES)'
+          new=('CPP_SOURCES = $(subst $(EGS_SOURCEDIR)get_inputs.mortran,'
+               '$(EGS_SOURCEDIR)rad_compton1.mortran '
+               '$(EGS_SOURCEDIR)get_inputs.mortran,$(C_ADVANCED_SOURCES))')
+          if old not in text:
+              raise SystemExit('Could not patch egs_chamber Makefile')
+          p.write_text(text.replace(old,new,1))
+          PY
+          set -o pipefail
+          make 2>&1 | tee "$GITHUB_WORKSPACE/stage8_egs_chamber_build.log"
+          test -x "$EGS_HOME/bin/gha/egs_chamber"
+
+      - name: Build and self-check TERAD RW3 input
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          mkdir -p stage8_inputs stage8_logs
+          cp "stage8_spectra/spectra/${BEAM}.ensrc" "$EGS_HOME/egs_chamber/${BEAM}.ensrc"
+          python scripts/build_stage8_terad_rw3_b1.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output "stage8_inputs/stage8_${CONFIG}.egsinp" \
+            --beam "$BEAM" --ssd "$SSD" --field-x "$FIELD_X" --field-y "$FIELD_Y" \
+            --ncase "$NCASE" --nbatch "$NBATCH" --xcse "$XCSE" --rr "$RR" \
+            --seed1 "$SEED1" --seed2 "$SEED2"
+          input="stage8_inputs/stage8_${CONFIG}.egsinp"
+          grep -Fq 'name = rw3_phantom' "$input"
+          grep -Fq 'name = chamber_in_rw3' "$input"
+          grep -Fq 'name = dose_to_rw3' "$input"
+          grep -Fq 'bulk density = 1.045000' "$input"
+          grep -Fq 'cavity mass = 7.832972283369083e-04' "$input"
+          grep -Fq "spectrum file = \$EGS_HOME/egs_chamber/${BEAM}.ensrc" "$input"
+
+      - name: Run Stage 8 TERAD RW3 MC
+        shell: bash
+        run: |
+          export EGS_HOME="$EGSRUN/egs_home/"
+          export EGS_CONFIG="$EGSRUN/HEN_HOUSE/specs/gha.conf"
+          export HEN_HOUSE="$EGSRUN/HEN_HOUSE/"
+          export PATH="$HEN_HOUSE/scripts/bin:$HEN_HOUSE/bin/gha:$EGS_HOME/bin/gha:$PATH"
+          name="stage8_${CONFIG}"
+          cp "stage8_inputs/${name}.egsinp" "$EGS_HOME/egs_chamber/${name}.egsinp"
+          cd "$EGS_HOME/egs_chamber"
+          set -o pipefail
+          "$EGS_HOME/bin/gha/egs_chamber" -i "$name" 2>&1 | tee "$GITHUB_WORKSPACE/stage8_logs/${name}.log"
+          cd "$GITHUB_WORKSPACE"
+          log="stage8_logs/${name}.log"
+          grep -Eq 'Global Pcut[[:space:]]+0\.001' "$log"
+          grep -Eq 'Global Ecut[[:space:]]+0\.512' "$log"
+          grep -Eq 'Radiative Compton corrections[[:space:]]+On' "$log"
+          grep -Fq 'Range rejection = Russian Roullette (RR)' "$log"
+          grep -Eq "initial seeds[[:space:]]*=[[:space:]]*${SEED1}[[:space:]]+${SEED2}" "$log"
+          grep -Eq "last case[[:space:]]*=[[:space:]]*${NCASE}" "$log"
+          grep -Eq 'finishSimulation\(egs_chamber\)[[:space:]]+0' "$log"
+          grep -Eq '^dose_to_rw3[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+[[:space:]]+%' "$log"
+          grep -Eq '^chamber_in_rw3[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+[[:space:]]+%' "$log"
+          grep -Eq 'dose_to_rw3[[:space:]]+chamber_in_rw3[[:space:]]+-[[:space:]]+[0-9.+Ee-]+[[:space:]]+\+/-[[:space:]]*[0-9.+Ee-]+' "$log"
+          if grep -Eqi 'segmentation fault|fatal error|geometry error|Turning radiative Compton corrections OFF' "$log"; then exit 1; fi
+
+      - name: Summarize Stage 8 RW3 point
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, os, re
+          cfg=os.environ['CONFIG']; p=Path(f'stage8_logs/stage8_{cfg}.log')
+          out=Path(f'stage8_point_{cfg}.csv')
+          cols=['config','beam','applicator','ssd_cm','field_x_cm','field_y_cm','ncase','seed1','seed2','D_RW3_per_history','u_D_RW3_pct','Dcav_RW3_per_history','u_Dcav_RW3_pct','R_RW3','u_R_RW3_abs','u_R_RW3_pct','elapsed_s']
+          row={k:'NA' for k in cols}
+          row.update(config=cfg,beam=os.environ['BEAM'],applicator=os.environ['APPLICATOR'],ssd_cm=os.environ['SSD'],field_x_cm=os.environ['FIELD_X'],field_y_cm=os.environ['FIELD_Y'],ncase=os.environ['NCASE'],seed1=os.environ['SEED1'],seed2=os.environ['SEED2'])
+          if p.exists():
+              text=p.read_text(errors='replace')
+              for key,label in [('D_RW3','dose_to_rw3'),('Dcav_RW3','chamber_in_rw3')]:
+                  m=re.findall(r'^'+label+r'\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)\s+%',text,re.M)
+                  if m:
+                      v,u=m[-1]; row[f'{key}_per_history']=v; row[f'u_{key}_pct']=u
+              m=re.findall(r'^dose_to_rw3\s+chamber_in_rw3\s+-\s+([0-9.+\-Ee]+)\s+\+/-\s*([0-9.+\-Ee]+)',text,re.M)
+              if m:
+                  r,u=map(float,m[-1]); row['R_RW3']=f'{r:.8g}'; row['u_R_RW3_abs']=f'{u:.8g}'; row['u_R_RW3_pct']=f'{100*u/r:.5f}'
+              me=re.findall(r'Elapsed time:\s+([0-9.+\-Ee]+)\s+s',text)
+              if me: row['elapsed_s']=me[-1]
+          with out.open('w',newline='') as f:
+              w=csv.DictWriter(f,fieldnames=cols); w.writeheader(); w.writerow(row)
+          print(out.read_text())
+          PY
+
+      - name: Upload Stage 8 point
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage8-rw3-${{ matrix.config }}
+          path: |
+            stage8_configure.log
+            stage8_egs_chamber_build.log
+            stage8_inputs/*.egsinp
+            stage8_logs/*.log
+            stage8_point_*.csv
+          if-no-files-found: warn
+
+  summary:
+    name: Evaluate RW3 to water transfer for 12 configurations
+    needs: rw3
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Download Stage 8 point summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage8-rw3-Q*
+          path: stage8_downloads
+          merge-multiple: true
+
+      - name: Calculate direct RW3 to water coefficients
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv, math
+          RCO=1.12016676
+          URCO=0.00104473
+
+          water={}
+          with open('results/stage5_absolute_scores.csv',newline='') as f:
+              for r in csv.DictReader(f): water[r['config']]=r
+          if len(water)!=12:
+              raise SystemExit(f'Expected 12 persisted Stage 5 absolute scores, found {len(water)}')
+
+          rw3=[]
+          for p in sorted(Path('stage8_downloads').glob('stage8_point_*.csv')):
+              with p.open(newline='') as f: rw3.append(next(csv.DictReader(f)))
+          if len(rw3)!=12:
+              raise SystemExit(f'Expected 12 Stage 8 points, found {len(rw3)}')
+
+          out=[]
+          for r in rw3:
+              cfg=r['config']
+              if cfg not in water: raise SystemExit(f'Missing Stage 5 match for {cfg}')
+              w=water[cfg]
+              required=['D_RW3_per_history','u_D_RW3_pct','Dcav_RW3_per_history','u_Dcav_RW3_pct','R_RW3','u_R_RW3_abs']
+              if any(r[k]=='NA' for k in required): raise SystemExit(f'Missing valid RW3 score for {cfg}')
+
+              Dw=float(w['Dw_per_history']); uDw=float(w['u_Dw_pct'])/100
+              Dcavw=float(w['Dcav_water_per_history']); uDcavw=float(w['u_Dcav_pct'])/100
+              Dr=float(r['D_RW3_per_history']); uDr=float(r['u_D_RW3_pct'])/100
+              Dcavr=float(r['Dcav_RW3_per_history']); uDcavr=float(r['u_Dcav_RW3_pct'])/100
+              Rrw3=float(r['R_RW3']); uRrw3=float(r['u_R_RW3_abs'])
+              vals=[Dw,Dcavw,Dr,Dcavr,Rrw3,uRrw3]
+              if not all(math.isfinite(x) and x>0 for x in vals): raise SystemExit(f'Invalid numeric RW3/water score for {cfg}')
+
+              dwater_over_rw3=Dw/Dr
+              u_dwater_over_rw3=dwater_over_rw3*math.sqrt(uDw*uDw+uDr*uDr)
+              k_rw3_to_w=Dcavw/Dcavr
+              u_k_rw3_to_w=k_rw3_to_w*math.sqrt(uDcavw*uDcavw+uDcavr*uDcavr)
+              Rdirect=Dw/Dcavr
+              u_Rdirect=Rdirect*math.sqrt(uDw*uDw+uDcavr*uDcavr)
+              kdirect=Rdirect/RCO
+              u_kdirect=kdirect*math.sqrt((u_Rdirect/Rdirect)**2+(URCO/RCO)**2)
+
+              # Independent algebraic consistency check against R_RW3 * Dw/Drw3.
+              reconstructed=Rrw3*dwater_over_rw3
+              consistency_pct=100*(reconstructed/Rdirect-1)
+              gate=(100*u_Rdirect/Rdirect)<=1.0 and abs(consistency_pct)<=0.20
+
+              out.append({
+                'config':cfg,'beam':r['beam'],'applicator':r['applicator'],'ssd_cm':r['ssd_cm'],
+                'field_cm':f"{r['field_x_cm']}x{r['field_y_cm']}",
+                'Dw_water_per_history':Dw,'u_Dw_water_pct':100*uDw,
+                'D_RW3_per_history':Dr,'u_D_RW3_pct':100*uDr,
+                'Dcav_water_per_history':Dcavw,'u_Dcav_water_pct':100*uDcavw,
+                'Dcav_RW3_per_history':Dcavr,'u_Dcav_RW3_pct':100*uDcavr,
+                'R_RW3':Rrw3,'u_R_RW3_abs':uRrw3,
+                'Dw_over_Drw3':dwater_over_rw3,'u_Dw_over_Drw3_abs':u_dwater_over_rw3,
+                'k_RW3_to_water':k_rw3_to_w,'u_k_RW3_to_water_abs':u_k_rw3_to_w,
+                'R_direct_RW3_to_water':Rdirect,'u_R_direct_abs':u_Rdirect,'u_R_direct_pct':100*u_Rdirect/Rdirect,
+                'k_Qg_Co_direct_RW3_to_water':kdirect,'u_k_Qg_Co_direct_abs':u_kdirect,
+                'direct_consistency_pct':consistency_pct,'point_gate':str(gate).lower()
+              })
+
+          out.sort(key=lambda x:(x['beam'],x['ssd_cm'],x['field_cm']))
+          fields=list(out[0].keys())
+          with open('stage8_rw3_direct_summary.csv','w',newline='') as f:
+              wr=csv.DictWriter(f,fieldnames=fields); wr.writeheader(); wr.writerows(out)
+          gate=all(r['point_gate']=='true' for r in out)
+          maxu=max(r['u_R_direct_pct'] for r in out)
+          maxcons=max(abs(r['direct_consistency_pct']) for r in out)
+          with open('stage8_gate.txt','w') as f:
+              f.write(f'gate_pass={str(gate).lower()}\n')
+              f.write(f'points={len(out)}\n')
+              f.write(f'max_u_R_direct_pct={maxu:.5f}\n')
+              f.write(f'max_abs_direct_consistency_pct={maxcons:.5f}\n')
+          print(Path('stage8_rw3_direct_summary.csv').read_text())
+          print(Path('stage8_gate.txt').read_text())
+          if not gate: raise SystemExit('Stage 8 RW3 direct gate failed')
+          PY
+
+      - name: Upload Stage 8 production summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8-rw3-direct-summary
+          path: |
+            stage8_rw3_direct_summary.csv
+            stage8_gate.txt
