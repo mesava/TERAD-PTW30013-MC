@@ -2,7 +2,7 @@
 
 Monte Carlo проект для определения chamber-specific коэффициентов коррекции для **PTW 30013** на киловольтном рентгенотерапевтическом аппарате **TERAD**.
 
-> **Текущий статус:** PTW 30013 **Model B1 benchmark-validated** по CCRI100/135/180/250. **Stage 4 Co-60 — PASS**: `R_Co = 1.12016676 ± 0.00104473`. **Stage 5 TERAD matched-water — PASS: 12/12 конфигураций**. Следующий production-блок — **реальная RW3-геометрия и прямой RW3→water transfer**.
+> **Текущий статус:** PTW 30013 **Model B1 benchmark-validated** по CCRI100/135/180/250. **Stage 4 Co-60 — PASS**: `R_Co = 1.12016676 ± 0.00104473`. **Stage 5 TERAD matched-water — PASS: 12/12 конфигураций**. **Stage 8 — реальная RW3-геометрия и прямой RW3→water transfer — ACTIVE**.
 
 ## Базовая задача
 
@@ -24,7 +24,7 @@ Monte Carlo проект для определения chamber-specific коэф
 
 `k_g,Q(g) = R_Q,g / R_Q,F50`
 
-Для следующего блока будет дополнительно определён direct RW3→water response:
+Для RW3-блока дополнительно определяется direct RW3→water response:
 
 `R_Q,g^(RW3→w) = D_w^(matched water) / D_cav^(RW3)`
 
@@ -189,24 +189,32 @@ The supplied clinical data define SSD and aperture but not proprietary applicato
 
 For rectangular fields the current explicit convention is: first listed field dimension along chamber axis/stem and second dimension perpendicular. Orientation remains a geometry-sensitivity item.
 
-## Next production block — RW3 matched / direct end-to-end 🟡
+## Stage 8 — RW3 matched / direct end-to-end 🟡 ACTIVE
 
-Real measurement geometry supplied by the user:
+Real measurement geometry:
 
-- RW3 transverse size = 30×30 cm²;
-- PTW 30013 horizontal;
-- chamber axis perpendicular to beam;
-- reference point on CAX;
-- stem right;
-- **1.3 cm RW3 physically above the chamber body**;
-- this corresponds experimentally to **2.0 cm water-equivalent chamber-centre depth**;
+- RW3 phantom type 29672, transverse size = 30×30 cm²;
+- PTW 30013 is inserted into chamber plate **29672/U19**;
+- U19 thickness = 20 mm, with PTW-specified chamber-axis offsets **H1 = 7 mm** and **H2 = 13 mm**;
+- in the actual clinical assembly, the chamber axis lies **7 mm below the upper face of U19**;
+- an additional **13 mm of RW3 slabs is placed above U19**;
+- therefore the geometric chamber centre / reference point is at a **physical depth of 20 mm = 2.0 cm from the RW3 surface**;
+- PTW 30013 horizontal, chamber axis perpendicular to beam, reference point on CAX, stem right;
 - approximately 10 cm RW3 downstream;
 - applicator contacts RW3 surface;
 - SSD = 40 or 50 cm from source to RW3 surface.
 
-The nominal RW3 material model for MC is documented separately and is treated as a material-model assumption, not as a measured composition of the user's individual slab set. PTW specifies RW3 as water-equivalent for high-energy photon/electron ranges, not specifically for 120–200 kV; therefore a dedicated kV transfer calculation is required.
+This 2.0 cm depth is a **physical geometric depth**, not a water-equivalent reinterpretation. It is deliberately matched to the 2.0 cm water depth used in Stage 5, so the direct RW3→water comparison changes the phantom material while preserving the reference-point depth and clinical SSD.
 
-The direct calculation will determine for each of the 12 configurations:
+RW3 manufacturer anchors used in MC:
+
+- polystyrene `(C8H8)` containing **2.0 ± 0.4% TiO2 by mass**;
+- density = **1.045 g/cm³**;
+- electron density = **1.012 × water**;
+- mean `Z/A = 0.536`;
+- slab thickness tolerance = **±0.1 mm**.
+
+The direct calculation determines for each of the 12 configurations:
 
 - `D_cav,RW3 / history`;
 - `D_RW3 / history` at the chamber reference point;
@@ -238,7 +246,7 @@ Validated transport architecture uses low-energy photon transport, Radiative Com
 | 5 | 12 TERAD matched-water `R_Q,g` | ✅ 12/12 PASS |
 | 6 | spectrum/chamber sensitivity | ⏸ nominal production first |
 | 7 | applicator/orientation sensitivity | ⏸ nominal production first |
-| 8 | RW3-to-water + 12 direct end-to-end | 🟡 next/active block |
+| 8 | RW3-to-water + 12 direct end-to-end | 🟡 ACTIVE |
 | 9 | final coefficients + uncertainty budget | ⏸ |
 
 ## Project rules
@@ -249,4 +257,4 @@ Validated transport architecture uses low-energy photon transport, Radiative Com
 - F50 is a real clinical configuration, not reference-only;
 - technical CI failure is not interpreted as a physical MC failure;
 - missing proprietary dimensions are documented as limitations, not invented;
-- RW3 composition/density assumptions must be separated from user-measured geometry and propagated as model uncertainty.
+- RW3 manufacturer composition/density and actual measured/setup geometry are tracked separately and propagated into the uncertainty model.
