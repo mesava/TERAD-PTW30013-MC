@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Build one Stage 8 TERAD RW3 configuration with benchmark-validated PTW30013 Model B1.
 
-Hard geometry inputs come from the user. RW3 elemental composition/density are an explicit
-nominal material model and are NOT asserted to be lot-specific measurements of the user's slabs.
+RW3 geometry/material anchors:
+- PTW RW3 manual D188.131.00/03;
+- chamber plate 29672/U19 for PTW 30013;
+- U19 chamber-axis offsets H1=7 mm and H2=13 mm in the 20 mm plate;
+- the user's measurement orientation uses the H2=13 mm side toward the source,
+  therefore the chamber axis/reference point depth is 13 mm physical RW3;
+- RW3 material is polystyrene (C8H8) with nominal 2% TiO2 by mass,
+  density 1.045 g/cm3. The manufacturer tolerance 2.0 +/- 0.4% TiO2 is
+  retained for later material sensitivity and is not fitted here.
 """
 from __future__ import annotations
 
@@ -15,11 +22,10 @@ RW3_H = 0.0759
 RW3_C = 0.9041
 RW3_O = 0.0080
 RW3_TI = 0.0120
-CHAMBER_OUTER_RADIUS_CM = 0.3475
-RW3_ABOVE_BODY_CM = 1.3
-CENTER_DEPTH_CM = RW3_ABOVE_BODY_CM + CHAMBER_OUTER_RADIUS_CM  # 1.6475 cm physical
-DOWNSTREAM_BELOW_BODY_CM = 10.0
-DOWNSTREAM_Z_CM = CHAMBER_OUTER_RADIUS_CM + DOWNSTREAM_BELOW_BODY_CM  # +10.3475 cm
+U19_H1_CM = 0.7
+U19_H2_CM = 1.3
+CENTER_DEPTH_CM = U19_H2_CM
+DOWNSTREAM_Z_CM = 10.0  # canonical approximate downstream RW3 from chamber axis
 
 
 def replace_section(text: str, start_anchor: str, end_anchor: str, transform) -> str:
@@ -51,10 +57,7 @@ def main() -> None:
 
     text = Path(args.template).read_text()
 
-    # ------------------------------------------------------------------
-    # Fixed benchmark-validated Model B1 geometry: identical chamber model
-    # to Stage 3H-4/5, Stage 4 and Stage 5. Only surrounding medium changes.
-    # ------------------------------------------------------------------
+    # Fixed benchmark-validated Model B1 geometry.
     if text.count("thickness = 0.03") != 2:
         raise SystemExit("Unexpected Model A end-gap structure")
     text = text.replace("thickness = 0.03", "thickness = 0.09")
@@ -102,7 +105,6 @@ def main() -> None:
         raise SystemExit("XCSE label anchor missing")
     text = text.replace(old_xcse, new_xcse, 1)
 
-    # Chamber calculation now has 17 enhanced regions after the B1 tip insertion.
     marker = "geometry name = chamber_in_water"
     head, chamber = text.split(marker, 1)
     body, tail = chamber.split(":stop calculation geometry:", 1)
@@ -121,9 +123,7 @@ def main() -> None:
         raise SystemExit("Model A cavity mass anchor missing")
     text = text.replace("cavity mass = 7.410453757123e-4", f"cavity mass = {cavity_mass:.15e}", 1)
 
-    # ------------------------------------------------------------------
-    # Add nominal RW3 pegsless medium.
-    # ------------------------------------------------------------------
+    # PTW-manual nominal RW3 medium.
     rw3_media = f"""
     :start RW3_NOMINAL:
         elements = H, C, O, Ti
@@ -136,10 +136,6 @@ def main() -> None:
         raise SystemExit("media definition end missing")
     text = text.replace(":stop media definition:", rw3_media + ":stop media definition:", 1)
 
-    # ------------------------------------------------------------------
-    # Replace only the physical surrounding medium around the fixed chamber
-    # and the local score/phase-space zones. Internal chamber media unchanged.
-    # ------------------------------------------------------------------
     def chamber_to_rw3(section: str) -> str:
         return section.replace("WATER_1KEV", "RW3_NOMINAL")
 
@@ -164,7 +160,6 @@ def main() -> None:
         score_to_rw3,
     )
 
-    # Phase-space box is physically inside RW3.
     text = replace_section(
         text,
         "        name = phsp_box",
@@ -172,11 +167,7 @@ def main() -> None:
         lambda s: s.replace("WATER_1KEV", "RW3_NOMINAL"),
     )
 
-    # ------------------------------------------------------------------
-    # Direct physical RW3 geometry.
-    # Chamber centre z=0. Surface is 1.6475 cm upstream of centre because
-    # 1.3 cm RW3 lies above the chamber body plus the fixed B1 outer radius.
-    # ------------------------------------------------------------------
+    # Direct physical U19 RW3 geometry: chamber axis/reference point at 13 mm.
     surface_z = -CENTER_DEPTH_CM
     source_z = -(args.ssd + CENTER_DEPTH_CM)
     downstream_z = DOWNSTREAM_Z_CM
@@ -199,13 +190,11 @@ def main() -> None:
     tail = tail.replace(oldmedia, newmedia, 1)
     text = head + marker + tail
 
-    # Envelope geometry names and base/inscribed geometries.
     text = text.replace("base geometry = water_phantom", "base geometry = rw3_phantom")
     text = text.replace("name = chamber_in_water", "name = chamber_in_rw3")
     text = text.replace("name = dose_to_water", "name = dose_to_rw3")
     text = text.replace("inscribed geometries = water_score_xcse", "inscribed geometries = rw3_score_xcse")
 
-    # Scoring options and score mass.
     text = text.replace("geometry name = dose_to_water", "geometry name = dose_to_rw3")
     text = text.replace("cavity regions = water_score", "cavity regions = rw3_score")
     text = text.replace("enhance regions = water_xcse_zone", "enhance regions = rw3_xcse_zone")
@@ -217,12 +206,8 @@ def main() -> None:
         raise SystemExit("water score mass anchor missing")
     text = text.replace("cavity mass = 7.853981633974483e-2", f"cavity mass = {rw3_score_mass:.15e}", 1)
 
-    # RR range medium follows the physical phase-space medium.
     text = text.replace("rejection range medium = WATER_1KEV", "rejection range medium = RW3_NOMINAL", 1)
 
-    # ------------------------------------------------------------------
-    # Point source + real clinical aperture at RW3 surface.
-    # ------------------------------------------------------------------
     if "position = 0 0 -100" not in text:
         raise SystemExit("source position anchor missing")
     text = text.replace("position = 0 0 -100", f"position = 0 0 {source_z:.4f}", 1)
@@ -295,7 +280,8 @@ def main() -> None:
     out.write_text(text)
 
     print(f"Wrote {out}")
-    print(f"beam={args.beam}; SSD={args.ssd:g} cm; physical centre depth={CENTER_DEPTH_CM:.4f} cm")
+    print(f"beam={args.beam}; SSD={args.ssd:g} cm; U19 physical chamber-axis depth={CENTER_DEPTH_CM:.4f} cm")
+    print(f"U19 H1={U19_H1_CM:.4f} cm; H2={U19_H2_CM:.4f} cm; H2 side toward source")
     print(f"surface field={args.field_x:g}x{args.field_y:g} cm2")
     print(f"reference-plane projected field={2*hx:.6f}x{2*hy:.6f} cm2")
     print(f"source z={source_z:.4f}; RW3 surface z={surface_z:.4f}; downstream z={downstream_z:.4f}")
