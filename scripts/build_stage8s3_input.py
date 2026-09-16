@@ -2,9 +2,15 @@
 """Build Stage 8S3 matched-water or RW3 inputs with point/finite source.
 
 The dosimetric geometry and PTW30013 Model B1 are delegated to the already
-validated Stage 5 and Stage 8 builders. The only source-geometry change made
-here is the optional replacement of the point source by a uniform circular
-source surrogate with physical diameter 7.5 mm.
+validated Stage 5 and Stage 8 builders.
+
+For the baseline point source we preserve the validated Stage 5/8 angular-cone
+construction exactly. For the finite-source sensitivity, the source is replaced
+by a uniform circular source surrogate with physical diameter 7.5 mm and the
+collimation target is moved to the actual phantom surface (z=-2 cm), where the
+clinical applicator field is defined. This keeps the surface field exactly equal
+to the requested clinical field while allowing the finite source to introduce
+its physical geometrical penumbra/divergence.
 
 The 7.5-mm diameter is a tube technical characteristic supplied for this
 project. A uniform disk is still a surrogate for the unknown focal-intensity
@@ -21,6 +27,7 @@ from pathlib import Path
 
 FOCAL_DIAMETER_CM = 0.75
 FOCAL_RADIUS_CM = FOCAL_DIAMETER_CM / 2.0
+SURFACE_Z_CM = -2.0
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -89,6 +96,7 @@ def main() -> None:
         raise SystemExit(f"Unexpected source z: found {z_found}, expected {source_z}")
 
     if args.source_model == "finite_7p5mm":
+        # Replace the point by a uniform circular source in the same source plane.
         indent = m.group("indent")
         repl = (
             f"{indent}:start source shape:\n"
@@ -100,8 +108,44 @@ def main() -> None:
             f"{indent}:stop source shape:"
         )
         text = text[:m.start()] + repl + text[m.end():]
-        if f"radius = {FOCAL_RADIUS_CM:.6f}" not in text or f"translation = 0 0 {source_z:.6f}" not in text:
-            raise SystemExit("Finite-source replacement self-check failed")
+
+        # The validated point-source builders express a surface-defined field
+        # by projecting it to z=0. For a distributed source this would no longer
+        # keep the physical surface aperture exact. Replace the projected target
+        # by the requested field rectangle in the actual surface plane z=-2 cm.
+        target_pattern = re.compile(
+            r"(?P<indent>\s*):start target shape:\s*\n"
+            r"(?P=indent)\s*library\s*=\s*egs_rectangle\s*\n"
+            r"(?P=indent)\s*rectangle\s*=\s*[-+0-9.eE]+\s+[-+0-9.eE]+\s+[-+0-9.eE]+\s+[-+0-9.eE]+\s*\n"
+            r"(?P=indent):stop target shape:",
+            re.M,
+        )
+        mt = target_pattern.search(text)
+        if not mt:
+            raise SystemExit("Could not locate delegated rectangular target block")
+        ti = mt.group("indent")
+        hx = 0.5 * args.field_x
+        hy = 0.5 * args.field_y
+        target_repl = (
+            f"{ti}:start target shape:\n"
+            f"{ti}    library = egs_rectangle\n"
+            f"{ti}    rectangle = {-hx:.8f} {-hy:.8f} {hx:.8f} {hy:.8f}\n"
+            f"{ti}    :start transformation:\n"
+            f"{ti}        translation = 0 0 {SURFACE_Z_CM:.6f}\n"
+            f"{ti}    :stop transformation:\n"
+            f"{ti}:stop target shape:"
+        )
+        text = text[:mt.start()] + target_repl + text[mt.end():]
+
+        checks = [
+            f"radius = {FOCAL_RADIUS_CM:.6f}",
+            f"translation = 0 0 {source_z:.6f}",
+            f"rectangle = {-hx:.8f} {-hy:.8f} {hx:.8f} {hy:.8f}",
+            f"translation = 0 0 {SURFACE_Z_CM:.6f}",
+        ]
+        for check in checks:
+            if check not in text:
+                raise SystemExit(f"Finite-source replacement self-check failed: {check}")
     else:
         if "type = point" not in text:
             raise SystemExit("Point-source self-check failed")
@@ -110,7 +154,8 @@ def main() -> None:
     print(f"Wrote {out}")
     print(
         f"medium={args.medium}; beam={args.beam}; SSD={args.ssd:g} cm; source_model={args.source_model}; "
-        f"source_z={source_z:g} cm; focal_diameter={FOCAL_DIAMETER_CM:g} cm"
+        f"source_z={source_z:g} cm; focal_diameter={FOCAL_DIAMETER_CM:g} cm; "
+        f"surface_field={args.field_x:g}x{args.field_y:g} cm2 at z={SURFACE_Z_CM:g} cm"
     )
 
 
