@@ -1,0 +1,141 @@
+name: Stage 8S1b RW3 TiO2 sensitivity all geometries
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage8s1b-rw3-tio2-all-geometries.yml'
+      - 'scripts/build_stage8_terad_rw3_b1.py'
+      - 'scripts/build_stage6_rw3_tio2_sensitivity.py'
+      - 'scripts/run_stage8s1b_point.sh'
+      - 'scripts/summarize_stage8s1b_tio2.py'
+      - 'scripts/evaluate_stage8s1b_tio2.py'
+      - 'results/stage8_rw3_direct_summary.csv'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile sensitivity code
+        run: |
+          python -m py_compile scripts/build_stage8_terad_rw3_b1.py
+          python -m py_compile scripts/build_stage6_rw3_tio2_sensitivity.py
+          python -m py_compile scripts/summarize_stage8s1b_tio2.py
+          python -m py_compile scripts/evaluate_stage8s1b_tio2.py
+      - name: Preflight representative low/high inputs
+        run: |
+          python scripts/build_stage6_rw3_tio2_sensitivity.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/Q120_F40_6x8_low.egsinp \
+            --beam Q120 --ssd 40 --field-x 6 --field-y 8 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 3101 --seed2 4101 \
+            --tio2-mass-fraction 0.016
+          python scripts/build_stage6_rw3_tio2_sensitivity.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/Q200_F40_4x15_high.egsinp \
+            --beam Q200 --ssd 40 --field-x 4 --field-y 15 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 3402 --seed2 4402 \
+            --tio2-mass-fraction 0.024
+          grep -Fq 'physical chamber-axis depth=2.0000 cm' <(python scripts/build_stage6_rw3_tio2_sensitivity.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/check.egsinp --beam Q120 --ssd 40 --field-x 6 --field-y 8 \
+            --ncase 10 --nbatch 2 --xcse 64 --rr 64 --seed1 3101 --seed2 4101 --tio2-mass-fraction 0.016)
+
+  spectra:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - run: python scripts/generate_spekpy_spectra.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s1b-terad-spectra
+          path: spectra/*.ensrc
+
+  sensitivity:
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {config: Q120_F40_6x8,  beam: Q120, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  variant: low,  tio2: '0.016', seed1: '3101', seed2: '4101'}
+          - {config: Q120_F40_6x8,  beam: Q120, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  variant: high, tio2: '0.024', seed1: '3101', seed2: '4101'}
+          - {config: Q120_F40_4x15, beam: Q120, applicator: F40, ssd: '40', field_x: '4', field_y: '15', variant: low,  tio2: '0.016', seed1: '3102', seed2: '4102'}
+          - {config: Q120_F40_4x15, beam: Q120, applicator: F40, ssd: '40', field_x: '4', field_y: '15', variant: high, tio2: '0.024', seed1: '3102', seed2: '4102'}
+          - {config: Q140_F40_6x8,  beam: Q140, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  variant: low,  tio2: '0.016', seed1: '3201', seed2: '4201'}
+          - {config: Q140_F40_6x8,  beam: Q140, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  variant: high, tio2: '0.024', seed1: '3201', seed2: '4201'}
+          - {config: Q140_F40_4x15, beam: Q140, applicator: F40, ssd: '40', field_x: '4', field_y: '15', variant: low,  tio2: '0.016', seed1: '3202', seed2: '4202'}
+          - {config: Q140_F40_4x15, beam: Q140, applicator: F40, ssd: '40', field_x: '4', field_y: '15', variant: high, tio2: '0.024', seed1: '3202', seed2: '4202'}
+          - {config: Q150_F40_6x8,  beam: Q150, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  variant: low,  tio2: '0.016', seed1: '3301', seed2: '4301'}
+          - {config: Q150_F40_6x8,  beam: Q150, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  variant: high, tio2: '0.024', seed1: '3301', seed2: '4301'}
+          - {config: Q150_F40_4x15, beam: Q150, applicator: F40, ssd: '40', field_x: '4', field_y: '15', variant: low,  tio2: '0.016', seed1: '3302', seed2: '4302'}
+          - {config: Q150_F40_4x15, beam: Q150, applicator: F40, ssd: '40', field_x: '4', field_y: '15', variant: high, tio2: '0.024', seed1: '3302', seed2: '4302'}
+          - {config: Q200_F40_6x8,  beam: Q200, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  variant: low,  tio2: '0.016', seed1: '3401', seed2: '4401'}
+          - {config: Q200_F40_6x8,  beam: Q200, applicator: F40, ssd: '40', field_x: '6', field_y: '8',  variant: high, tio2: '0.024', seed1: '3401', seed2: '4401'}
+          - {config: Q200_F40_4x15, beam: Q200, applicator: F40, ssd: '40', field_x: '4', field_y: '15', variant: low,  tio2: '0.016', seed1: '3402', seed2: '4402'}
+          - {config: Q200_F40_4x15, beam: Q200, applicator: F40, ssd: '40', field_x: '4', field_y: '15', variant: high, tio2: '0.024', seed1: '3402', seed2: '4402'}
+    env:
+      CONFIG: ${{ matrix.config }}
+      BEAM: ${{ matrix.beam }}
+      APPLICATOR: ${{ matrix.applicator }}
+      SSD: ${{ matrix.ssd }}
+      FIELD_X: ${{ matrix.field_x }}
+      FIELD_Y: ${{ matrix.field_y }}
+      VARIANT: ${{ matrix.variant }}
+      TIO2: ${{ matrix.tio2 }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage8s1b-terad-spectra
+          path: stage8s1b_spectra
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run sensitivity point
+        run: bash scripts/run_stage8s1b_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s1b-${{ matrix.config }}-${{ matrix.variant }}
+          path: stage8s1b_point_${{ matrix.config }}_${{ matrix.variant }}.csv
+
+  evaluate:
+    needs: sensitivity
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s1b-*
+          path: stage8s1b_points
+          merge-multiple: true
+      - name: Evaluate all-geometry material sensitivity
+        run: |
+          python scripts/evaluate_stage8s1b_tio2.py \
+            --baseline results/stage8_rw3_direct_summary.csv \
+            --points-glob 'stage8s1b_points/stage8s1b_point_*.csv' \
+            --output stage8s1b_rw3_tio2_all_geometries_summary.csv \
+            --gate-output stage8s1b_gate.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s1b-rw3-tio2-all-geometries-summary
+          path: |
+            stage8s1b_rw3_tio2_all_geometries_summary.csv
+            stage8s1b_gate.txt
