@@ -1,0 +1,6 @@
+screen_complete=true
+points=8
+criterion=max u(Dcav) <= 1.0%
+max_u_Dcav_pct=0.43900
+max_u_rect_material_pct=1.47098
+assumption=PTW +/-0.4 percentage-point TiO2 tolerance treated as rectangular bound for screening
