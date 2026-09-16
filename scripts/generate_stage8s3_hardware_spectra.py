@@ -167,13 +167,13 @@ def write_ensrc(path: Path, title: str, e: np.ndarray, y: np.ndarray) -> None:
 
 
 def weighted_fraction_below(e: np.ndarray, y: np.ndarray, threshold_kev: float) -> float:
-    den = float(np.trapz(y, e))
+    den = float(np.trapezoid(y, e))
     if den <= 0:
         return math.nan
     mask = e < threshold_kev
     if np.count_nonzero(mask) < 2:
         return 0.0
-    return float(np.trapz(y[mask], e[mask]) / den)
+    return float(np.trapezoid(y[mask], e[mask]) / den)
 
 
 def main() -> None:
