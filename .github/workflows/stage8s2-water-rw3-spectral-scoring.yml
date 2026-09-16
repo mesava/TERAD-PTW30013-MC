@@ -1,0 +1,120 @@
+name: Stage 8S2 water-RW3 spectral scoring
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage8s2-water-rw3-spectral-scoring.yml'
+      - 'scripts/build_stage8s2_spectral_input.py'
+      - 'scripts/run_stage8s2_spectral_point.sh'
+      - 'scripts/summarize_stage8s2_spectrum.py'
+      - 'scripts/evaluate_stage8s2_spectral.py'
+      - 'scripts/generate_spekpy_spectra.py'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Stage 8S2 code
+        run: |
+          python -m py_compile scripts/build_stage8s2_spectral_input.py
+          python -m py_compile scripts/summarize_stage8s2_spectrum.py
+          python -m py_compile scripts/evaluate_stage8s2_spectral.py
+      - name: Preflight water and RW3 inputs
+        run: |
+          python scripts/build_stage8s2_spectral_input.py --output /tmp/water.egsinp --beam Q120 --medium water --depth-cm 0.001 --ncase 1000 --seed1 5101 --seed2 6101
+          python scripts/build_stage8s2_spectral_input.py --output /tmp/rw3.egsinp --beam Q200 --medium rw3 --depth-cm 2.0 --ncase 1000 --seed1 5401 --seed2 6401
+          grep -Fq 'library = egs_fluence_scoring' /tmp/water.egsinp
+          grep -Fq 'scoring circle = 0 0 0.001000 0.500000' /tmp/water.egsinp
+          grep -Fq 'bulk density = 1.045000' /tmp/rw3.egsinp
+          grep -Fq 'position = 0 0 -50.0000' /tmp/rw3.egsinp
+
+  spectra:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - run: python scripts/generate_spekpy_spectra.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s2-terad-spectra
+          path: spectra/*.ensrc
+
+  spectral:
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        beamcfg:
+          - {beam: Q120, seed1: '5101', seed2: '6101'}
+          - {beam: Q140, seed1: '5201', seed2: '6201'}
+          - {beam: Q150, seed1: '5301', seed2: '6301'}
+          - {beam: Q200, seed1: '5401', seed2: '6401'}
+        medium: [water, rw3]
+        depthcfg:
+          - {depth: '0.001', tag: d0p001}
+          - {depth: '1.0', tag: d1p0}
+          - {depth: '2.0', tag: d2p0}
+    env:
+      BEAM: ${{ matrix.beamcfg.beam }}
+      MEDIUM: ${{ matrix.medium }}
+      DEPTH_CM: ${{ matrix.depthcfg.depth }}
+      DEPTH_TAG: ${{ matrix.depthcfg.tag }}
+      SEED1: ${{ matrix.beamcfg.seed1 }}
+      SEED2: ${{ matrix.beamcfg.seed2 }}
+      NCASE: '50000000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage8s2-terad-spectra
+          path: stage8s2_spectra
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run planar spectral scoring point
+        run: bash scripts/run_stage8s2_spectral_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s2-point-${{ matrix.beamcfg.beam }}-${{ matrix.medium }}-${{ matrix.depthcfg.tag }}
+          path: |
+            stage8s2_summary_${{ matrix.beamcfg.beam }}_${{ matrix.medium }}_${{ matrix.depthcfg.tag }}.csv
+            stage8s2_spectrum_${{ matrix.beamcfg.beam }}_${{ matrix.medium }}_${{ matrix.depthcfg.tag }}.csv
+            stage8s2_outputs/stage8s2_${{ matrix.beamcfg.beam }}_${{ matrix.medium }}_${{ matrix.depthcfg.tag }}_photon.agr
+
+  evaluate:
+    needs: spectral
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s2-point-*
+          path: stage8s2_points
+          merge-multiple: true
+      - name: Evaluate water versus RW3 spectral transfer
+        run: |
+          python scripts/evaluate_stage8s2_spectral.py \
+            --summaries-glob 'stage8s2_points/stage8s2_summary_*.csv' \
+            --spectra-glob 'stage8s2_points/stage8s2_spectrum_*.csv' \
+            --output-summary stage8s2_water_rw3_spectral_summary.csv \
+            --output-ratios stage8s2_water_rw3_spectral_ratios.csv \
+            --gate-output stage8s2_gate.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s2-water-rw3-spectral-summary
+          path: |
+            stage8s2_water_rw3_spectral_summary.csv
+            stage8s2_water_rw3_spectral_ratios.csv
+            stage8s2_gate.txt
