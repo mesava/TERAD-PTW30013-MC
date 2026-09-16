@@ -1,179 +1,167 @@
-# TERAD-PTW30013-MC
+# TERAD–PTW30013–MC
 
-Monte Carlo проект для определения chamber-specific коэффициентов коррекции для **PTW 30013** на киловольтном рентгенотерапевтическом аппарате **TERAD**.
+Проект Monte Carlo для определения поправочных коэффициентов для ионизационной камеры **PTW 30013 SN 013488** при клинической дозиметрии киловольтного рентгенотерапевтического аппарата **TERAD 200**.
 
-> **Текущий статус:** PTW 30013 **Model B1 benchmark-validated** по CCRI100/135/180/250. **Stage 4 Co-60 — PASS**: `R_Co = 1.12016676 ± 0.00104473`. **Stage 5 TERAD matched-water — PASS: 12/12 конфигураций**. **Stage 8 RW3→water direct — PASS: 12/12**. **Stage 8S1 RW3 TiO2 sensitivity — ACTIVE**.
+> **Текущий статус:** модель камеры PTW 30013 B1 прошла независимую benchmark-валидацию; Co-60 anchor — PASS; TERAD matched-water — 12/12 PASS; прямой RW3→water transfer — 12/12 PASS; первичный sensitivity-screen состава RW3 по TiO2 — завершён, эффект значим и требует расширения на все клинические геометрии. Следующий физический этап добавлен: спектральное сравнение вода ↔ RW3 на глубинах 0+, 1 и 2 см.
 
-## Базовая задача
+## 1. Клиническая задача
 
-Камера PTW 30013 SN 013488 имеет calibration coefficient в Co-60:
+Камера имеет калибровочный коэффициент в Co-60:
 
 `N_D,w(Co-60) = 5.389e7 Gy/C`.
 
-Задача проекта — определить, как по показанию этой камеры в реальной TERAD/RW3-геометрии получить absorbed dose to water для каждого качества пучка и каждого клинического аппликатора.
+Экспериментального `N_D,w,Q` для наших рентгеновских качеств Q120/Q140/Q150/Q200 нет. Поэтому проект строится от известной Co-60 calibration basis и посредством MC определяет прямой коэффициент перехода к поглощённой дозе в воде для каждой реальной TERAD/RW3-конфигурации.
 
-Основные определения:
+Основной практический коэффициент:
 
-`R_Q,g = (D_w / D_cav)_(Q,g)`
+`K_Q,g,Co^(RW3→w) = [D_w,water / D_cav,RW3]_(Q,g) / R_Co`.
 
-`R_Co = (D_w / D_cav)_Co`
+Клиническая формула:
 
-`k_Q,g,Co = R_Q,g / R_Co`
+`D_w = M_corr · N_D,w(Co-60) · K_Q,g,Co^(RW3→w)`.
 
-Для внутреннего сравнения геометрий при одном качестве Q:
+Здесь `M_corr` — показание камеры после необходимых поправок измерительной системы (`k_TP`, `k_s`, `k_pol`, `k_elec` и др. в зависимости от принятой процедуры).
 
-`k_g,Q(g) = R_Q,g / R_Q,F50`
+При использовании прямого `K_Q,g,Co^(RW3→w)` **не нужно дополнительно умножать на отдельные `k_Q` и `k_g`**: переход от Co-60 basis к конкретному качеству, клинической геометрии и реальному RW3 уже находится внутри direct coefficient.
 
-Для RW3-блока дополнительно определяется direct RW3→water response:
+## 2. Важное замечание о `k_g`
 
-`R_Q,g^(RW3→w) = D_w^(matched water) / D_cav^(RW3)`
+Ранее для внутреннего анализа использовалось отношение
 
-и соответствующий клинический коэффициент:
+`R_Q,g / R_Q,F50`.
 
-`k_Q,g,Co^(RW3→w) = R_Q,g^(RW3→w) / R_Co`.
+Для F50 оно равно 1 только по определению нормировки. F50 здесь — реальная конфигурация **SSD 50 см, поле 8×10 см²**, а не официальный reference geometry TRS-398.
 
-## Канонические TERAD inputs
+Поэтому такие значения корректнее трактовать как **относительный geometry-response factor относительно F50**, а не как готовый `k_g` TRS-398.
 
-| Beam | kV | mA | Measured HVL1 | Added filter |
+Чистый geometry factor при одном качестве Q может быть определён только после явного задания рентгеновской `g_ref,Q`:
+
+`k_g,Q^MC = R_Q,g(clin) / R_Q,g(ref)`.
+
+Экспериментальный `N_D,w,Q` для такого MC-разложения не обязателен, но `g_ref,Q` должна быть определена однозначно. Для практического direct-подхода это разложение не требуется.
+
+## 3. Канонические качества TERAD
+
+| Качество | kV | mA | Измеренный HVL1 | Добавочная фильтрация |
 |---|---:|---:|---:|---|
-| Q120 | 120 | 10 | **0.224 mm Cu** | 4.0 mm Al |
-| Q140 | 140 | 10 | **0.410 mm Cu** | 0.2 mm Cu |
-| Q150 | 150 | 10 | **0.729 mm Cu** | 0.5 mm Cu |
-| Q200 | 200 | 7 | **1.452 mm Cu** | 1.0 mm Cu |
+| Q120 | 120 | 10 | **0.224 мм Cu** | 4.0 мм Al |
+| Q140 | 140 | 10 | **0.410 мм Cu** | 0.2 мм Cu |
+| Q150 | 150 | 10 | **0.729 мм Cu** | 0.5 мм Cu |
+| Q200 | 200 | 7 | **1.452 мм Cu** | 1.0 мм Cu |
 
-Для каждого качества рассчитываются три реальные клинические конфигурации:
+Клинические конфигурации для каждого качества:
 
-| Applicator | SSD | Field |
+| Аппликатор | SSD | Поле |
 |---|---:|---:|
-| F40 | 40 cm | 6 × 8 cm² |
-| F40 | 40 cm | 4 × 15 cm² |
-| F50 | 50 cm | 8 × 10 cm² |
+| F40 | 40 см | 6×8 см² |
+| F40 | 40 см | 4×15 см² |
+| F50 | 50 см | 8×10 см² |
 
-Итого **12 Q/applicator combinations**.
+Итого: **12 конфигураций**.
 
-Авторитетные файлы:
+## 4. Спектры TERAD — PASS
 
-- `docs/CANONICAL_MC_TASK.md`
-- `data/beam_qualities.csv`
-- `data/terad_clinical_geometries.csv`
-
-## Production spectra ✅
-
-Принятый first-pass TERAD spectrum model:
+Принятая first-pass модель спектров:
 
 - SpekPy 2.5.4;
-- W reflection target;
-- nominal anode angle 20°;
-- `kqp` physics;
-- 0.5 keV bins;
-- known clinical filtration + non-negative equivalent-Al nuisance filtration;
-- fit к measured Cu HVL.
+- отражательная W-мишень;
+- угол анода 20°;
+- физика `kqp`;
+- энергетический шаг 0.5 кэВ;
+- известная клиническая фильтрация + неотрицательная эквивалентная Al-фильтрация;
+- fit к измеренному Cu HVL.
 
-| Beam | Target HVL1 | Final HVL1 | Error |
+| Качество | Целевой HVL1 | Полученный HVL1 | Ошибка |
 |---|---:|---:|---:|
 | Q120 | 0.224000 | 0.224000 | 0.000% |
 | Q140 | 0.410000 | 0.410000 | 0.000% |
 | Q150 | 0.729000 | 0.729000 | 0.000% |
 | Q200 | 1.452000 | 1.452955 | +0.0658% |
 
-Result: `results/spekpy_fit_summary.csv`.
+Один HVL не определяет спектр однозначно, поэтому spectrum ambiguity остаётся отдельным вкладом неопределённости.
 
-Один HVL не определяет spectrum однозначно; spectrum ambiguity остаётся отдельным uncertainty contribution.
+Файл: `results/spekpy_fit_summary.csv`.
 
-## PTW 30013 Model B1 ✅ benchmark-validated
+## 5. PTW 30013 Model B1 — benchmark PASS
 
-Model B1 — public/aggregate surrogate, а не manufacturer blueprint.
+Model B1 — открытая/агрегированная surrogate-модель, а не proprietary blueprint производителя.
 
-Принятые параметры:
+Основные параметры:
 
-- sensitive radius = 3.05 mm;
-- sensitive length = 23.0 mm;
-- graphite wall = 0.09 mm;
-- PMMA wall = 0.335 mm;
-- Al central electrode diameter = 1.15 mm;
-- nominal public-derived PMMA tip surrogate = 1.5 mm;
-- reference point = 13.0 mm от physical tip;
-- cavity mass = `7.832972283369083e-04 g`.
+- радиус чувствительного объёма 3.05 мм;
+- длина чувствительного объёма 23.0 мм;
+- graphite wall 0.09 мм;
+- PMMA wall 0.335 мм;
+- центральный Al-электрод диаметром 1.15 мм;
+- PMMA tip surrogate 1.5 мм;
+- reference point 13 мм от физического tip;
+- cavity mass `7.832972283369083e-04 g`.
 
-Точная proprietary geometry guard/insulator/electrode-base/stem-transition не выдумывается и учитывается как model limitation.
+Точная proprietary geometry guard/insulator/electrode-base/stem-transition не выдумывается и остаётся model-form limitation.
 
-### Benchmark validation
+### Benchmark-результаты
 
-| Quality | MC weighted | u(k) | Target | Δ | z_vs_pub | z_rep |
-|---|---:|---:|---:|---:|---:|---:|
-| CCRI100/250 | **0.95093210** | 0.00401972 | 0.95355 | -0.2745% | -0.651 | -0.137 |
-| CCRI135/250 | **0.97168791** | 0.00415738 | 0.97460 | -0.2988% | -0.700 | -0.959 |
-| CCRI180/250 | **0.98774017** | 0.00419134 | 0.98565 | +0.2121% | +0.499 | +0.478 |
+| Качество | MC | u(k) | Литературная цель | Δ |
+|---|---:|---:|---:|---:|
+| CCRI100/250 | **0.95093210** | 0.00401972 | 0.95355 | -0.2745% |
+| CCRI135/250 | **0.97168791** | 0.00415738 | 0.97460 | -0.2988% |
+| CCRI180/250 | **0.98774017** | 0.00419134 | 0.98565 | +0.2121% |
 
-**Итог:** Model B1 прошла endpoint и intermediate validation без подгонки геометрии после получения результатов.
+Модель B1 принята без дальнейшей подгонки геометрии после benchmark-валидации.
 
-## Stage 4 — Co-60 anchor ✅ PASS
+## 6. Stage 4 — Co-60 anchor: PASS
 
-Reference geometry:
+Принятая Co-60 геометрия:
 
-- SDD = 100 cm;
-- SSD = 95 cm;
-- depth = 5 cm water;
-- field = 10×10 cm² at reference point;
-- water phantom = 30×30×30 cm³;
-- two independent 300M-history replications.
+- SSD = 95 см;
+- глубина центра камеры в воде = 5 см;
+- SDD = 100 см;
+- поле 10×10 см² в reference point;
+- водный фантом 30×30×30 см³.
 
 Run `34849606671`:
 
-- repA: `R_Co = 1.121780 ± 0.001430`;
-- repB: `R_Co = 1.118320 ± 0.001530`;
-- weighted: **`R_Co = 1.12016676 ± 0.00104473`**;
-- weighted MC uncertainty = **0.0933%**;
-- `z_rep = +1.652`;
-- gate = **PASS**.
+- `R_Co = 1.12016676 ± 0.00104473`;
+- относительная MC-неопределённость 0.0933%;
+- `z_rep = 1.652`;
+- gate = PASS.
 
-Persisted result: `results/stage4_co60_summary.csv`.
+Файл: `results/stage4_co60_summary.csv`.
 
-## Stage 5 — TERAD matched-water ✅ PASS
+Эта Co-60 geometry является calibration anchor проекта. Отношение `R_Q,g / R_Co` одновременно содержит переход по качеству и геометрии и поэтому не является чистым `k_g`.
 
-Workflow run: **`34931189724`**.
+## 7. Stage 5 — matched-water TERAD: 12/12 PASS
 
-Design:
+Run `34931189724`.
 
-- 12/12 canonical Q/applicator configurations;
-- 300M histories / 30 batches per point;
-- fixed benchmark-validated Model B1;
-- accepted TERAD spectra;
-- chamber centre at 2.0 cm depth in water;
-- 30×30 cm² water phantom;
-- explicit air path;
-- clinical SSD 40/50 cm;
-- field aperture specified at phantom surface and projected to chamber reference plane.
+Для всех 12 конфигураций:
 
-Predeclared point gate:
+- 300 млн историй;
+- 30 batches;
+- фиксированная Model B1;
+- принятые спектры TERAD;
+- физическая глубина центра камеры 2.0 см в воде;
+- клинические SSD 40/50 см;
+- поле задано на поверхности фантома.
 
-`u(R_Q,g) / R_Q,g <= 1.0%`.
+Все точки прошли критерий `u(R_Q,g)/R_Q,g <= 1%`.
 
-**Все 12/12 точек прошли gate.**
+| Конфигурация | `R_Q,g` | u(R), % | `R_Q,g / R_Co` |
+|---|---:|---:|---:|
+| Q120 F40 6×8 | 1.04389 | 0.3583 | 0.93190589 |
+| Q120 F40 4×15 | 1.05025 | 0.4085 | 0.93758361 |
+| Q120 F50 8×10 | 1.04726 | 0.4478 | 0.93491437 |
+| Q140 F40 6×8 | 1.05251 | 0.3620 | 0.93960117 |
+| Q140 F40 4×15 | 1.06164 | 0.4126 | 0.94775174 |
+| Q140 F50 8×10 | 1.05942 | 0.4474 | 0.94576990 |
+| Q150 F40 6×8 | 1.06825 | 0.3632 | 0.95365265 |
+| Q150 F40 4×15 | 1.08036 | 0.4147 | 0.96446354 |
+| Q150 F50 8×10 | 1.07130 | 0.4490 | 0.95637546 |
+| Q200 F40 6×8 | 1.09033 | 0.3522 | 0.97336400 |
+| Q200 F40 4×15 | 1.09022 | 0.3990 | 0.97326580 |
+| Q200 F50 8×10 | 1.08520 | 0.4349 | 0.96878433 |
 
-| Config | R_Q,g | u(R), % | k_Q,g,Co | k_g vs F50 |
-|---|---:|---:|---:|---:|
-| Q120 F40 6×8 | 1.04389 | 0.3583 | 0.93190589 | 0.99678208 |
-| Q120 F40 4×15 | 1.05025 | 0.4085 | 0.93758361 | 1.00285507 |
-| Q120 F50 8×10 | 1.04726 | 0.4478 | 0.93491437 | 1.00000000 |
-| Q140 F40 6×8 | 1.05251 | 0.3620 | 0.93960117 | 0.99347756 |
-| Q140 F40 4×15 | 1.06164 | 0.4126 | 0.94775174 | 1.00209549 |
-| Q140 F50 8×10 | 1.05942 | 0.4474 | 0.94576990 | 1.00000000 |
-| Q150 F40 6×8 | 1.06825 | 0.3632 | 0.95365265 | 0.99715299 |
-| Q150 F40 4×15 | 1.08036 | 0.4147 | 0.96446354 | 1.00845701 |
-| Q150 F50 8×10 | 1.07130 | 0.4490 | 0.95637546 | 1.00000000 |
-| Q200 F40 6×8 | 1.09033 | 0.3522 | 0.97336400 | 1.00472724 |
-| Q200 F40 4×15 | 1.09022 | 0.3990 | 0.97326580 | 1.00462588 |
-| Q200 F50 8×10 | 1.08520 | 0.4349 | 0.96878433 | 1.00000000 |
-
-Intrinsic F50 beam-quality coefficients:
-
-- `k_120,Co = 0.93491437 ± 0.00427671`
-- `k_140,Co = 0.94576990 ± 0.00432247`
-- `k_150,Co = 0.95637546 ± 0.00438567`
-- `k_200,Co = 0.96878433 ± 0.00430944`
-
-Persisted files:
+Файлы:
 
 - `results/stage5_terad_water_summary.csv`
 - `results/stage5_intrinsic_kq.csv`
@@ -181,48 +169,35 @@ Persisted files:
 - `results/stage5_absolute_scores.csv`
 - `docs/STAGE5_TERAD_WATER.md`
 
-`results/stage5_absolute_scores.csv` additionally preserves `D_w/history` and `D_cav,water/history` for direct matched-medium transfer calculations, so water MC does not have to be repeated in the RW3 block.
+## 8. Stage 8 — реальный RW3 → water direct: 12/12 PASS
 
-### Stage 5 modelling limits
+Run `34959596116`.
 
-The supplied clinical data define SSD and aperture but not proprietary applicator-wall material/thickness/internal geometry. Stage 5 therefore models field/SSD/aperture geometry, not unknown applicator-body scatter.
+### Реальная геометрия RW3
 
-For rectangular fields the current explicit convention is: first listed field dimension along chamber axis/stem and second dimension perpendicular. Orientation remains a geometry-sensitivity item.
+- RW3 phantom type 29672, 30×30 см²;
+- камера PTW 30013 в plate **29672/U19**;
+- ось камеры на 7 мм ниже верхней стороны U19;
+- дополнительно 13 мм RW3 над U19;
+- итоговая физическая глубина центра/reference point = **20 мм = 2.0 см**;
+- камера горизонтальна, ось камеры перпендикулярна CAX, reference point на CAX;
+- около 10 см RW3 за камерой;
+- аппликатор касается поверхности RW3;
+- SSD 40 или 50 см до поверхности RW3.
 
-## Stage 8 — RW3 matched / direct end-to-end ✅ PASS
+2.0 см — именно **физическая геометрическая глубина**, а не water-equivalent depth.
 
-Workflow run: **`34959596116`**.
+### Номинальный материал RW3
 
-Accepted real measurement geometry:
+- полистирол `C8H8` с **2.0 ± 0.4% TiO2 по массе**;
+- плотность 1.045 г/см³;
+- electron density 1.012×water;
+- mean Z/A = 0.536;
+- tolerance толщины плит ±0.1 мм.
 
-- RW3 phantom type 29672, transverse size = 30×30 cm²;
-- PTW 30013 in chamber plate **29672/U19**;
-- U19 chamber axis = **7 mm below the upper U19 face**;
-- **13 mm additional RW3** above U19;
-- geometric chamber centre/reference point = **20 mm = 2.0 cm physical depth** from the RW3 surface;
-- PTW 30013 horizontal, chamber axis perpendicular to beam, reference point on CAX, stem right;
-- approximately 10 cm RW3 downstream;
-- applicator contacts RW3 surface;
-- SSD = 40 or 50 cm from source to RW3 surface.
+### Итоговый direct coefficient
 
-This 2.0 cm is a physical geometric depth and is deliberately matched to the 2.0 cm water depth in Stage 5.
-
-RW3 nominal manufacturer anchors:
-
-- polystyrene `(C8H8)` containing **2.0 ± 0.4% TiO2 by mass**;
-- density = **1.045 g/cm³**;
-- electron density = **1.012 × water**;
-- mean `Z/A = 0.536`;
-- slab thickness tolerance = **±0.1 mm**.
-
-Final Stage 8 gate:
-
-- `gate_pass=true`
-- `points=12`
-- maximum statistical uncertainty of direct R = **0.44695%**
-- maximum direct-vs-factorized consistency difference = **0.00406%**
-
-| Config | R direct RW3→water | u(R), % | k_Q,g,Co direct RW3→water |
+| Конфигурация | `R_direct = D_w,water / D_cav,RW3` | u(R), % | `K_Q,g,Co^(RW3→w)` |
 |---|---:|---:|---:|
 | Q120 F40 4×15 | 1.013484 | 0.40342 | **0.904762** |
 | Q120 F40 6×8 | 1.010743 | 0.35439 | **0.902315** |
@@ -237,58 +212,143 @@ Final Stage 8 gate:
 | Q200 F40 6×8 | 1.076843 | 0.35164 | **0.961324** |
 | Q200 F50 8×10 | 1.074094 | 0.43440 | **0.958870** |
 
-Persisted files:
+Gate:
+
+- 12/12 PASS;
+- максимальная статистическая u(R) = 0.44695%;
+- direct и factorized формы согласуются в пределах 0.00406%.
+
+Файлы:
 
 - `results/stage8_rw3_direct_summary.csv`
 - `results/stage8_gate.txt`
 - `docs/STAGE8_RW3_DIRECT.md`
 
-The direct form `D_w,water / D_cav,RW3` and the factorized Stage 5 × RW3-transfer form agree to within **0.00406%** over all 12 configurations.
+## 9. Что происходит при переходе вода → RW3
 
-## Stage 8S1 — RW3 TiO2 material sensitivity 🟡 ACTIVE
+Stage 5 и Stage 8 показывают, что на одинаковой **физической глубине 2 см** RW3 не ведёт себя как вода в диапазоне 120–200 кВ.
 
-First material screen uses the PTW manufacturer tolerance endpoints while keeping the accepted geometry, spectra, chamber Model B1 and RW3 density fixed:
+В среднем по геометриям наблюдается приблизительно:
 
-- low endpoint: **1.6% TiO2 by mass**;
-- nominal: **2.0%** (accepted Stage 8 production model);
-- high endpoint: **2.4%**;
-- density fixed at **1.045 g/cm³** to isolate composition sensitivity.
+| Качество | `D_w / D_RW3` | `D_RW3` относительно воды |
+|---|---:|---:|
+| Q120 | ~1.134 | ~88.2% |
+| Q140 | ~1.117 | ~89.5% |
+| Q150 | ~1.094 | ~91.4% |
+| Q200 | ~1.068 | ~93.7% |
 
-Screening is run for the F50 8×10 configuration at Q120/Q140/Q150/Q200 with 300M histories per endpoint. The low/high calculations reuse the corresponding nominal F50 seed pairs to reduce irrelevant random-history differences. Endpoint shifts will be converted into a preliminary material uncertainty contribution; expansion to all 12 geometries depends on the measured sensitivity magnitude.
+То есть различие уменьшается с ростом энергии, но остаётся клинически значимым даже при 200 кВ.
 
-Workflow: `.github/workflows/stage8s1-rw3-tio2-sensitivity.yml`.
+При этом изменение chamber response не совпадает по знаку с изменением dose-to-medium: именно поэтому нельзя считать показание камеры в RW3 эквивалентным дозе в воде без специального transfer coefficient.
 
-## EGSnrc
+До Stage 8S2 это наблюдение является дозиметрическим фактом MC-модели; прямое доказательство изменения спектральной формы по глубине ещё не выполнено.
 
-Official NRC EGSnrc pinned commit:
+## 10. Stage 8S1 — чувствительность к TiO2: SCREEN PASS, эффект значим
 
-`f4d029f625a6c96ef3456e0b6d91d46ffce613e7`
+Run `35012034674`.
 
-Validated transport architecture uses low-energy photon transport, Radiative Compton, exact BCA, XCSE, TmpPhsp/IPSS and Russian Roulette.
+Проверены крайние значения допуска производителя для F50 8×10:
 
-## Project status
+- 1.6% TiO2;
+- nominal 2.0%;
+- 2.4% TiO2.
 
-| Stage | Content | Status |
+Плотность фиксирована на 1.045 г/см³, чтобы выделить именно composition sensitivity.
+
+Все 8 endpoint-MC расчётов завершены успешно; максимальная u(Dcav) = **0.439%**.
+
+| Q | nominal K | K при 1.6% | сдвиг | K при 2.4% | сдвиг | предварительный `u_rect`, % |
+|---|---:|---:|---:|---:|---:|---:|
+| Q120 | 0.890691 | 0.880473 | -1.147% | 0.909180 | +2.076% | **1.198** |
+| Q140 | 0.905650 | 0.905242 | -0.045% | 0.928724 | +2.548% | **1.471** |
+| Q150 | 0.933468 | 0.929616 | -0.413% | 0.949878 | +1.758% | **1.015** |
+| Q200 | 0.958870 | 0.958106 | -0.080% | 0.968236 | +0.977% | **0.564** |
+
+Предварительный вывод: влияние TiO2 нельзя считать пренебрежимо малым. Максимальный endpoint shift достигает **2.55%**, что существенно больше MC statistical uncertainty. Поэтому sensitivity по составу RW3 необходимо расширить с F50 на все 12 клинических геометрий и затем включить в итоговый uncertainty budget.
+
+Файлы:
+
+- `results/stage8s1_rw3_tio2_sensitivity_summary.csv`
+- `results/stage8s1_gate.txt`
+- `.github/workflows/stage8s1-rw3-tio2-sensitivity.yml`
+
+## 11. Stage 8S2 — спектральное сравнение вода ↔ RW3: ДОБАВЛЕН
+
+Цель — напрямую проверить, как RW3 изменяет photon fluence и энергетический спектр по глубине и тем самым объяснить дозиметрические различия Stage 8.
+
+Первичный скрининг:
+
+- F50, SSD 50 см, 8×10 см²;
+- Q120, Q140, Q150, Q200;
+- две среды: вода и номинальный RW3;
+- глубины scoring: **0+ см, 1.0 см, 2.0 см**;
+- одинаковый источник, поле, SSD и нормировка на исходную историю.
+
+Планируемые величины:
+
+- `dPhi/dE`;
+- energy fluence;
+- суммарный photon fluence;
+- средняя и медианная энергия;
+- энергетические квантили;
+- `Phi_RW3(E,z)/Phi_water(E,z)`;
+- изменение интегрального флюенса с глубиной.
+
+Спектральный этап является физическим объяснением direct RW3→water correction и **не добавляется отдельным множителем** к уже рассчитанному `K_Q,g,Co^(RW3→w)`.
+
+Подробный план: `docs/STAGE8S2_WATER_RW3_SPECTRAL_SCORING.md`.
+
+## 12. Следующие этапы проекта
+
+Порядок дальнейшей работы:
+
+1. **Stage 8S1b — TiO2 на всех 12 конфигурациях.** Проверить, зависит ли material sensitivity от поля и SSD, и получить конфигурационно-зависимый вклад в uncertainty.
+2. **Stage 8S2 — spectral scoring вода/RW3.** Реализовать phase-space/track scoring на 0+, 1 и 2 см, сначала для F50 на четырёх качествах.
+3. **Геометрическая чувствительность RW3.** Физическая глубина камеры, tolerance толщины плит, суммарная толщина над камерой, возможные air gaps/неидеальный контакт плит.
+4. **Ориентация прямоугольных полей.** Поменять местами 6×8 ↔ 8×6 и 4×15 ↔ 15×4 относительно оси/stem камеры и оценить влияние на direct coefficient.
+5. **Spectrum ambiguity.** Построить альтернативные спектры, совместимые с тем же измеренным HVL, и оценить разброс `K_Q,g,Co^(RW3→w)`.
+6. **Model-form uncertainty PTW30013.** Использовать границы, совместимые с benchmark-валидацией, без повторной подгонки модели к TERAD.
+7. **Applicator/head limitation.** Оценить влияние отсутствующей proprietary геометрии стенок аппликаторов; при появлении реальных размеров/материалов — отдельный MC sensitivity.
+8. **Экспериментальная валидация.** Реальные измерения PTW30013 в RW3 для выбранных конфигураций и сравнение MC-derived `D_w` с независимым клиническим/референсным методом.
+9. **Финальный uncertainty budget.** Объединить MC statistics, Co-60 anchor, TiO2, геометрию RW3, spectrum ambiguity, orientation, chamber model, positioning и экспериментальные составляющие.
+10. **Финальная таблица клинических коэффициентов и методика применения.** Для каждой из 12 конфигураций: `K_Q,g,Co^(RW3→w)`, стандартная и расширенная неопределённость, область применимости и ограничения.
+
+## 13. Текущий статус этапов
+
+| Этап | Содержание | Статус |
 |---:|---|---|
-| 0 | EGSnrc / egs_chamber infrastructure | ✅ |
-| 1 | TERAD production spectra | ✅ |
-| 2–3 | PTW 30013 chamber benchmark | ✅ Model B1 validated |
-| 3H-4 | CCRI100/250 high-stat | ✅ PASS |
-| 3H-5 | CCRI135/180 independent validation | ✅ PASS |
-| 4 | Co-60 `R_Co` | ✅ PASS |
-| 5 | 12 TERAD matched-water `R_Q,g` | ✅ 12/12 PASS |
-| 6 | spectrum/chamber sensitivity | ⏸ after RW3 material screen |
-| 7 | applicator/orientation sensitivity | ⏸ after RW3 material screen |
-| 8 | RW3-to-water + 12 direct end-to-end | ✅ 12/12 PASS |
-| 8S1 | RW3 TiO2 composition sensitivity | 🟡 ACTIVE |
-| 9 | final coefficients + uncertainty budget | ⏸ |
+| 0 | Инфраструктура EGSnrc / egs_chamber | ✅ |
+| 1 | Номинальные спектры TERAD | ✅ |
+| 2–3 | Модель PTW30013 и benchmark | ✅ PASS |
+| 4 | Co-60 anchor | ✅ PASS |
+| 5 | TERAD matched-water, 12 конфигураций | ✅ 12/12 PASS |
+| 8 | RW3→water direct, 12 конфигураций | ✅ 12/12 PASS |
+| 8S1 | TiO2 sensitivity, F50 screen | ✅ 8/8; эффект значим |
+| 8S1b | TiO2 sensitivity, все 12 конфигураций | ⏭ следующий |
+| 8S2 | Спектральный scoring вода/RW3 | 📝 добавлен в план |
+| 7A | Ориентация/геометрия поля | ⏸ |
+| 7B | Глубина, плиты, air gaps | ⏸ |
+| 6A | Spectrum ambiguity | ⏸ |
+| 6B | Chamber model-form sensitivity | ⏸ |
+| 9 | Экспериментальная валидация | ⏸ |
+| 10 | Итоговая неопределённость и клинические коэффициенты | ⏸ |
 
-## Project rules
+## 14. EGSnrc
 
-- measured TERAD HVLs are not changed to improve agreement;
-- chamber geometry is not tuned after benchmark validation;
-- one HVL does not uniquely determine a spectrum;
-- F50 is a real clinical configuration, not reference-only;
-- technical CI failure is not interpreted as a physical MC failure;
-- missing proprietary dimensions are documented as limitations, not invented;
-- RW3 manufacturer composition/density and actual measured/setup geometry are tracked separately and propagated into the uncertainty model.
+Используется официальный NRC EGSnrc commit:
+
+`f4d029f625a6c96ef3456e0b6d91d46ffce613e7`.
+
+В production-архитектуре используются low-energy photon transport, Radiative Compton, exact BCA, XCSE, TmpPhsp/IPSS и Russian Roulette.
+
+## 15. Правила проекта
+
+- измеренные HVL TERAD не изменяются ради улучшения результата;
+- геометрия камеры не подгоняется после benchmark-валидации;
+- один HVL не считается уникальным описанием спектра;
+- неизвестные proprietary размеры и материалы не выдумываются;
+- F50 не объявляется reference geometry TRS-398 только потому, что относительно неё удобно нормировать результаты;
+- физическая глубина RW3 2.0 см не называется автоматически water-equivalent depth;
+- direct coefficient не раскладывается на дополнительные множители без строгого определения каждого звена;
+- технический CI failure не трактуется как физический MC failure;
+- nominal MC statistics не являются полной клинической неопределённостью.
