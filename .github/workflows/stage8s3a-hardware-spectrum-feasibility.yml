@@ -1,0 +1,86 @@
+name: Stage 8S3a hardware spectrum feasibility
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage8s3a-hardware-spectrum-feasibility.yml'
+      - 'scripts/generate_stage8s3_hardware_spectra.py'
+      - 'scripts/evaluate_stage8s3_hardware_spectra.py'
+      - 'scripts/build_stage8s3_input.py'
+      - 'scripts/run_stage8s3_finite_source_smoke.sh'
+      - 'data/beam_qualities.csv'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Stage 8S3 scripts
+        run: |
+          python -m py_compile scripts/generate_stage8s3_hardware_spectra.py
+          python -m py_compile scripts/evaluate_stage8s3_hardware_spectra.py
+          python -m py_compile scripts/build_stage8s3_input.py
+          python -m py_compile scripts/build_stage5_terad_water_b1.py
+          python -m py_compile scripts/build_stage8_terad_rw3_b1.py
+      - name: Build point and finite source inputs without transport
+        run: |
+          python scripts/build_stage8s3_input.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/point.egsinp --medium water --source-model point \
+            --beam Q120 --ssd 50 --field-x 8 --field-y 10 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 7101 --seed2 8101
+          python scripts/build_stage8s3_input.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/finite.egsinp --medium rw3 --source-model finite_7p5mm \
+            --beam Q120 --ssd 50 --field-x 8 --field-y 10 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 7101 --seed2 8101
+          grep -Fq 'type = point' /tmp/point.egsinp
+          grep -Fq 'library = egs_circle' /tmp/finite.egsinp
+          grep -Fq 'radius = 0.375000' /tmp/finite.egsinp
+          grep -Fq 'translation = 0 0 -52.000000' /tmp/finite.egsinp
+
+  spectrum-feasibility:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install spectrum dependencies
+        run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - name: Generate explicit-Be hardware spectrum variants
+        run: python scripts/generate_stage8s3_hardware_spectra.py
+      - name: Evaluate feasibility without negative filtration
+        run: |
+          python scripts/evaluate_stage8s3_hardware_spectra.py \
+            --summary stage8s3_spectrum_feasibility.csv \
+            --output stage8s3_spectrum_gate.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3a-hardware-spectrum-feasibility
+          path: |
+            stage8s3_spectrum_feasibility.csv
+            stage8s3_spectrum_gate.txt
+            stage8s3_spectra/**/*.csv
+            stage8s3_spectra/**/*.ensrc
+
+  finite-source-smoke:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: EGSnrc finite Ø7.5 mm source smoke test
+        run: bash scripts/run_stage8s3_finite_source_smoke.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3a-finite-source-smoke
+          path: |
+            stage8s3_smoke/gate.txt
+            stage8s3_smoke/*.egsinp
+            stage8s3_smoke/*.log
