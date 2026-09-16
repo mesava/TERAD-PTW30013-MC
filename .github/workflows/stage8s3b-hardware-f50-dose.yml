@@ -1,0 +1,179 @@
+name: Stage 8S3b hardware-informed F50 dose comparison
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage8s3b-hardware-f50-dose.yml'
+      - 'scripts/generate_stage8s3_hardware_spectra.py'
+      - 'scripts/evaluate_stage8s3_hardware_spectra.py'
+      - 'scripts/build_stage8s3_input.py'
+      - 'scripts/run_stage8s3_finite_source_smoke.sh'
+      - 'scripts/run_stage8s3b_point.sh'
+      - 'scripts/summarize_stage8s3b_point.py'
+      - 'scripts/evaluate_stage8s3b_f50.py'
+      - 'scripts/build_stage5_terad_water_b1.py'
+      - 'scripts/build_stage8_terad_rw3_b1.py'
+      - 'data/beam_qualities.csv'
+      - 'results/stage4_co60_summary.csv'
+      - 'results/stage8_rw3_direct_summary.csv'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Stage 8S3b code
+        run: |
+          python -m py_compile scripts/generate_stage8s3_hardware_spectra.py
+          python -m py_compile scripts/evaluate_stage8s3_hardware_spectra.py
+          python -m py_compile scripts/build_stage8s3_input.py
+          python -m py_compile scripts/summarize_stage8s3b_point.py
+          python -m py_compile scripts/evaluate_stage8s3b_f50.py
+      - name: Build canonical point and finite F50 inputs
+        run: |
+          python scripts/build_stage8s3_input.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/point.egsinp --medium water --source-model point \
+            --beam Q120 --ssd 50 --field-x 8 --field-y 10 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 7111 --seed2 8111
+          python scripts/build_stage8s3_input.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/finite.egsinp --medium rw3 --source-model finite_7p5mm \
+            --beam Q120 --ssd 50 --field-x 8 --field-y 10 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 7114 --seed2 8114
+          grep -Fq 'type = point' /tmp/point.egsinp
+          grep -Fq 'radius = 0.375000' /tmp/finite.egsinp
+          grep -Fq 'rectangle = -4.00000000 -5.00000000 4.00000000 5.00000000' /tmp/finite.egsinp
+          grep -Fq 'translation = 0 0 -2.000000' /tmp/finite.egsinp
+
+  spectra:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - name: Generate hardware-informed spectrum variants
+        run: python scripts/generate_stage8s3_hardware_spectra.py
+      - name: Evaluate and gate selected hardware candidate
+        run: |
+          python scripts/evaluate_stage8s3_hardware_spectra.py \
+            --summary stage8s3_spectrum_feasibility.csv \
+            --output stage8s3_spectrum_gate.txt
+          python - <<'PY'
+          import csv
+          rows=list(csv.DictReader(open('stage8s3_spectrum_feasibility.csv')))
+          cand=[r for r in rows if r['variant']=='hw_be0p8_a20']
+          assert len(cand)==4
+          assert all(r['feasible_nonnegative_residual_al']=='1' for r in cand)
+          PY
+          for b in Q120 Q140 Q150 Q200; do
+            test -s "stage8s3_spectra/hw_be0p8_a20/${b}.ensrc"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3b-hardware-spectra
+          path: |
+            stage8s3_spectra/hw_be0p8_a20/*.ensrc
+            stage8s3_spectra/hw_be0p8_a20/*.csv
+            stage8s3_spectrum_feasibility.csv
+            stage8s3_spectrum_gate.txt
+
+  finite-source-smoke:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate updated surface-anchored Ø7.5 mm finite source transport
+        run: bash scripts/run_stage8s3_finite_source_smoke.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3b-finite-source-smoke
+          path: |
+            stage8s3_smoke/gate.txt
+            stage8s3_smoke/*.egsinp
+
+  production:
+    needs: [spectra, finite-source-smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - {beam: Q120, source_model: point,         medium: water, seed1: '7111', seed2: '8111'}
+          - {beam: Q120, source_model: point,         medium: rw3,   seed1: '7112', seed2: '8112'}
+          - {beam: Q120, source_model: finite_7p5mm, medium: water, seed1: '7113', seed2: '8113'}
+          - {beam: Q120, source_model: finite_7p5mm, medium: rw3,   seed1: '7114', seed2: '8114'}
+          - {beam: Q140, source_model: point,         medium: water, seed1: '7211', seed2: '8211'}
+          - {beam: Q140, source_model: point,         medium: rw3,   seed1: '7212', seed2: '8212'}
+          - {beam: Q140, source_model: finite_7p5mm, medium: water, seed1: '7213', seed2: '8213'}
+          - {beam: Q140, source_model: finite_7p5mm, medium: rw3,   seed1: '7214', seed2: '8214'}
+          - {beam: Q150, source_model: point,         medium: water, seed1: '7311', seed2: '8311'}
+          - {beam: Q150, source_model: point,         medium: rw3,   seed1: '7312', seed2: '8312'}
+          - {beam: Q150, source_model: finite_7p5mm, medium: water, seed1: '7313', seed2: '8313'}
+          - {beam: Q150, source_model: finite_7p5mm, medium: rw3,   seed1: '7314', seed2: '8314'}
+          - {beam: Q200, source_model: point,         medium: water, seed1: '7411', seed2: '8411'}
+          - {beam: Q200, source_model: point,         medium: rw3,   seed1: '7412', seed2: '8412'}
+          - {beam: Q200, source_model: finite_7p5mm, medium: water, seed1: '7413', seed2: '8413'}
+          - {beam: Q200, source_model: finite_7p5mm, medium: rw3,   seed1: '7414', seed2: '8414'}
+    env:
+      BEAM: ${{ matrix.beam }}
+      SOURCE_MODEL: ${{ matrix.source_model }}
+      MEDIUM: ${{ matrix.medium }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+      SPECTRUM_VARIANT: hw_be0p8_a20
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      EGSRUN: /tmp/EGSnrc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage8s3b-hardware-spectra
+          path: stage8s3b_spectra
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Stage 8S3b 300M point
+        run: bash scripts/run_stage8s3b_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3b-${{ matrix.beam }}-${{ matrix.source_model }}-${{ matrix.medium }}
+          path: stage8s3b_point_${{ matrix.beam }}_${{ matrix.source_model }}_${{ matrix.medium }}.csv
+
+  evaluate:
+    needs: production
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s3b-Q*
+          path: stage8s3b_points
+          merge-multiple: true
+      - name: Evaluate hardware spectrum and finite-focus effects
+        run: |
+          python scripts/evaluate_stage8s3b_f50.py \
+            --points-glob 'stage8s3b_points/stage8s3b_point_*.csv' \
+            --rco results/stage4_co60_summary.csv \
+            --baseline results/stage8_rw3_direct_summary.csv \
+            --output stage8s3b_f50_hardware_source_summary.csv \
+            --gate-output stage8s3b_gate.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3b-f50-hardware-source-summary
+          path: |
+            stage8s3b_f50_hardware_source_summary.csv
+            stage8s3b_gate.txt
