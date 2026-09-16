@@ -2,9 +2,9 @@
 
 Monte Carlo проект для определения поправочных коэффициентов для ионизационной камеры **PTW 30013 SN 013488** при клинической дозиметрии киловольтного рентгенотерапевтического аппарата **TERAD 200**.
 
-> **Текущий статус:** Model B1 benchmark-validated; Co-60 anchor — PASS; TERAD matched-water — 12/12 PASS; прямой RW3→water transfer — 12/12 PASS; первичный TiO₂ sensitivity-screen — завершён и показал значимый эффект; **Stage 8S1b (TiO₂ для всех геометрий) — ACTIVE, run `35067286806`**; **Stage 8S2 (спектры вода↔RW3) — ACTIVE, run `35067807801`**.
+> **Текущий статус:** Model B1 benchmark-validated; Co-60 anchor — PASS; TERAD matched-water — 12/12 PASS; прямой RW3→water transfer — 12/12 PASS; первичный TiO₂ sensitivity-screen — завершён и показал значимый эффект; **Stage 8S1b (TiO₂ для всех F40-геометрий) — ACTIVE, run `35067286806`**; **Stage 8S2 (спектры вода↔RW3) — ACTIVE, run `35067807801`**; **Stage 8S3a hardware-spectrum feasibility — PASS**; **Stage 8S3b hardware-informed F50 dose comparison — ACTIVE, run `35072405754`**.
 >
-> **Критически важная интерпретация:** все уже полученные TERAD-коэффициенты относятся к **идеализированной, HVL-согласованной модели источника**. Эта модель сознательно использовалась как первый контролируемый физический уровень: W-мишень, nominal anode angle 20°, point source, известная добавочная фильтрация и equivalent-Al fit к измеренному HVL. После получения технических данных трубки начинается второй уровень — **hardware-informed, более реалистичная модель**, где явно проверяются Be-окно 0.8±0.1 мм, конечный фокус Ø7.5 мм, допуск kVp и неопределённость реального угла анода. Текущие коэффициенты не объявляются окончательными клиническими значениями до завершения этих sensitivity-блоков.
+> **Критически важная интерпретация:** все коэффициенты Stage 5/8 получены для **идеализированной, но HVL-согласованной модели источника**: W-мишень, nominal anode angle 20°, point source, известная добавочная фильтрация и equivalent-Al fit к измеренному HVL. Эта модель сохраняется как контролируемый baseline. Второй уровень — **hardware-informed модель** — уже запущен: explicit Be 0.8±0.1 мм, finite circular focal spot Ø7.5 мм, kVp sensitivity и неопределённость реального угла анода. Текущие Stage 5/8 коэффициенты не объявляются окончательными hardware-specific clinical values до завершения этих sensitivity-блоков.
 
 ## 1. Практическая задача
 
@@ -59,13 +59,31 @@ Stage 4 воспроизводит calibration basis камеры:
 
 Для каждого качества используются три реальные конфигурации:
 
-| Аппликатор | SSD | Поле |
+| Аппликатор | SSD | Клинический размер поля |
 |---|---:|---:|
 | F40 | 40 см | 6×8 см² |
 | F40 | 40 см | 4×15 см² |
 | F50 | 50 см | 8×10 см² |
 
 Итого 12 Q/geometry combinations.
+
+### 3.1. Где физически определён размер поля
+
+**Размеры 6×8, 4×15 и 8×10 см² определены в плоскости поверхности фантома, то есть в контактной плоскости выхода аппликатора.** Аппликатор при измерении прижимается непосредственно к поверхности RW3; для matched-water расчётов используется эквивалентная плоскость поверхности воды. SSD 40/50 см также относится к этой поверхности.
+
+Камера находится на физической глубине 2.0 см, но это **не означает**, что указанные размеры поля относятся к плоскости камеры.
+
+В исходной idealized point-source реализации Stage 5/8 это условие уже было выполнено. Computational target rectangle размещался в плоскости камеры `z=0`, но его размеры увеличивались на геометрический коэффициент
+
+`scale = (SSD + 2 cm) / SSD`,
+
+так что обратная проекция от point source на поверхность `z=-2 cm` точно давала требуемые клинические размеры поля. Например для F50 8×10 см² computational rectangle в плоскости камеры составлял 8.32×10.40 см², что при обратной проекции на поверхность даёт ровно 8×10 см².
+
+Следовательно, **Stage 5/8 не использовали размер поля в плоскости камеры как клиническое определение и не требуют исправления по этой причине**.
+
+Для finite circular focal spot Ø7.5 мм point-source projection перестаёт быть строго эквивалентной для всех точек распределённого источника. Поэтому в hardware-informed finite-source модели physical aperture задаётся **непосредственно в плоскости поверхности фантома / контакта аппликатора**. Это уточнение source geometry, а не изменение клинического определения поля.
+
+Для прямоугольных полей вычислительная convention остаётся: первая размерность (`field_x`) направлена вдоль оси/stem камеры до выполнения отдельного orientation sensitivity.
 
 ## 4. Принятые спектры TERAD — первый, идеализированный уровень модели
 
@@ -84,76 +102,88 @@ Stage 4 воспроизводит calibration basis камеры:
 
 Текущая TERAD source model **не является геометрически полной моделью реальной рентгеновской трубки**. Она была намеренно построена как контролируемая HVL-constrained модель, позволяющая сначала проверить весь MC pipeline, камеру, Co-60 anchor, клинические геометрии и RW3 transfer без введения неподтверждённых proprietary деталей.
 
-В текущем production-варианте:
+В idealized production-варианте:
 
 - материал мишени — W, что соответствует реальной трубке;
 - kVp соответствует клиническим режимам;
 - известная добавочная Al/Cu-фильтрация учтена;
 - measured Cu HVL воспроизводится;
-- Be-окно трубки **не моделируется отдельным физическим слоем**;
+- Be-окно трубки не моделируется отдельным физическим слоем;
 - его вклад и другие неизвестные элементы inherent filtration фактически поглощаются fitted equivalent-Al parameter;
-- источник в transport geometry — **point source**;
-- anode angle = **20°** — nominal SpekPy assumption, а не подтверждённая характеристика TERAD;
+- источник в transport geometry — point source;
+- anode angle = 20° — nominal SpekPy assumption, а не подтверждённая характеристика TERAD;
 - proprietary tube-head/applicator body scatter не моделируется, если геометрия и материалы неизвестны.
 
 Поэтому Stage 5, Stage 8, Stage 8S1, Stage 8S1b и первичный Stage 8S2 следует трактовать как результаты **идеализированной/HVL-согласованной модели**. Они дают физически содержательный baseline, но ещё не являются окончательной hardware-specific клинической моделью TERAD.
 
-### 4.2. Новые подтверждённые характеристики реальной трубки
+### 4.2. Подтверждённые характеристики реальной трубки
 
-По технической документации и уточнённым данным для используемой трубки известны следующие параметры:
-
-| Параметр | Реальная трубка | Текущая MC-модель | Статус / действие |
+| Параметр | Реальная трубка | Idealized MC | Hardware-informed действие |
 |---|---|---|---|
-| Материал анода | **вольфрам (W)** | W | ✅ уже соответствует |
-| Номинальное напряжение трубки | до 225 кВ | 120/140/150/200 кВ | ✅ клинические режимы внутри диапазона |
-| Точность выходного напряжения | **0.25%** | fixed nominal kVp | ⚠️ добавить kVp sensitivity |
-| Точность тока эмиссии | **0.25%** | mA хранится как metadata | низкий приоритет для нормированного `K`, важнее для absolute output |
-| Выходное окно | **Be** | отдельно не моделируется | ⚠️ требуется explicit Be model |
-| Толщина Be-окна | **0.8 ± 0.1 мм** | absorbed in equivalent-Al nuisance fit | 🔴 высокий приоритет sensitivity |
-| Материал мишени | **W** | W | ✅ |
-| Диаметр фокусного пятна | **7.5 мм** | point source | 🔴 finite-source sensitivity |
-| Реальный угол анода | неизвестен | nominal **20°** | 🔴 model-form sensitivity; 20° нельзя считать подтверждённым |
-| Угол раствора полезного пучка по тех. характеристикам | ≤30° | поле задаётся клинической апертурой | не является anode angle |
-| Литературное указание о полезном выходе порядка 40° | приблизительная характеристика полезного cone | не используется как `th` | не является anode angle |
-| Основной фильтр | Al или Cu | реальные клинические Al/Cu filters | ✅ |
-| Корпус/внутренние конструктивные элементы | часть фотонов поглощается внутри анода/корпуса | не моделируются явно | учитываются только косвенно через HVL fit; остаётся model-form limitation |
+| Материал анода | **вольфрам (W)** | W | уже соответствует |
+| Номинальное напряжение | до 225 кВ | 120/140/150/200 кВ | режимы допустимы |
+| Точность выходного напряжения | **0.25%** | fixed nominal kVp | отдельный kVp sensitivity |
+| Точность тока эмиссии | **0.25%** | mA как metadata | низкий приоритет для нормированного `K` |
+| Выходное окно | **Be** | отдельно отсутствует | explicit Be |
+| Толщина Be-окна | **0.8 ± 0.1 мм** | absorbed in equivalent-Al fit | 0.7/0.8/0.9 мм sensitivity |
+| Материал мишени | **W** | W | соответствует |
+| Диаметр фокусного пятна | **7.5 мм** | point source | finite circular source Ø7.5 мм |
+| Реальный угол анода | неизвестен | nominal 20° | model-form sensitivity |
+| Угол раствора полезного пучка по ТХ | ≤30° | clinical aperture | не является anode angle |
+| Литературный useful-beam cone | ~40° | не используется как `th` | не является anode angle |
+| Основной фильтр | Al или Cu | clinical Al/Cu filters | соответствует |
+| Внутренние элементы tube head | полная геометрия неизвестна | не моделируются явно | residual filtration + limitation |
 
 ### 4.3. Почему 30–40° нельзя подставить как угол анода
 
 Угол раствора полезного рентгеновского пучка и угол наклона вольфрамовой мишени — разные физические величины.
 
-Литературное описание, что фотоны после взаимодействия в аноде испускаются в телесный угол `4π`, а полезный выход ограничен приблизительно углом порядка 40°, описывает **пространственный выход полезного пучка после самопоглощения и конструктивного ограничения трубкой**. Значение ≤30° из технических характеристик также относится к раствору рентгеновского пучка. Ни одно из этих значений не является автоматически SpekPy parameter `th`.
+Описание испускания фотонов в `4π` с полезным выходом порядка 40° характеризует пространственный useful-beam cone после самопоглощения и конструктивного ограничения трубкой. Значение ≤30° из технических характеристик также относится к раствору пучка. Ни одно из этих значений не является автоматически SpekPy parameter `th`.
 
 Следовательно:
 
 - `th = 20°` остаётся nominal model assumption;
-- 30° и ~40° **не заменяют** его;
-- реальный anode angle должен либо быть найден в документации, либо учтён как model-form sensitivity interval.
+- 30° и ~40° его не заменяют;
+- реальный anode angle должен быть найден в документации либо учтён через model-form sensitivity.
 
-### 4.4. Второй уровень: hardware-informed более реалистичная модель
+### 4.4. Второй уровень: hardware-informed модель
 
-Следующий spectrum/source model должен проверять физическую цепочку:
+Проверяемая физическая цепочка:
 
-`W target → Be window (0.8±0.1 мм) → клинический Al/Cu filter → residual equivalent filtration fit → measured Cu HVL`.
+`W target → Be window (0.8±0.1 мм) → clinical Al/Cu filter → residual equivalent filtration fit → measured Cu HVL`.
 
-Важно: residual equivalent-Al остаётся допустимым nuisance parameter только для неописанных компонентов tube head, но **известное Be-окно больше не должно прятаться внутри него**.
+Residual equivalent-Al допускается только как nuisance parameter для неописанных элементов tube head; известное Be-окно больше не прячется внутри него.
 
-Для source geometry необходимо сравнить:
+Source geometry:
 
-`point source` ↔ `finite circular focal spot Ø7.5 мм`.
+`point source ↔ finite circular focal spot Ø7.5 мм`.
 
-Для spectrum/model-form uncertainty необходимо отдельно проверить:
+Для finite spot клиническая апертура задаётся непосредственно в контактной плоскости поверхности фантома, как описано в разделе 3.1.
 
-- Be = 0.7 / 0.8 / 0.9 мм;
-- kVp endpoints по технической точности 0.25%;
-- несколько физически разумных значений anode angle при обязательном повторном fit к measured HVL;
-- сохранение measured clinical HVL как жёсткого экспериментального ограничения.
-
-Главная проверяемая величина для каждого hardware-informed варианта:
+Главная сравниваемая величина:
 
 `ΔK = K_hardware-informed / K_idealized - 1`.
 
-Если отличие статистически/клинически мало, текущая идеализированная модель получит количественное подтверждение. Если отличие значимо, hardware-informed variant станет новой nominal model, а текущие значения сохранятся как baseline для оценки model-form correction.
+Если отличие мало, idealized baseline получит количественное подтверждение. Если отличие значимо, hardware-informed model станет новой nominal model, а Stage 5/8 сохранятся как baseline/model-form comparison.
+
+### 4.5. Stage 8S3a — hardware spectrum feasibility: PASS
+
+Stage 8S3a проверил, можно ли после явного введения Be-окна сохранить измеренный Cu HVL без нефизической отрицательной фильтрации.
+
+Для nominal screening variant `Be=0.8 мм`, `th=20°` все четыре качества оказались физически допустимыми:
+
+| Q | HVL после Be + clinical filter, мм Cu | Measured target HVL, мм Cu | Residual Al |
+|---|---:|---:|---:|
+| Q120 | 0.207924 | 0.224 | 0.42676 мм |
+| Q140 | 0.389919 | 0.410 | 0.49457 мм |
+| Q150 | 0.724803 | 0.729 | 0.20761 мм |
+| Q200 | 1.455320 | 1.452 | 0 мм |
+
+Q200 без residual Al уже находится внутри принятого ±0.5% HVL gate.
+
+Anode-angle screening не определяет истинный угол анода, но показывает feasibility внутри используемой SpekPy-модели: варианты 20°, 25° и 30° совместимы с measured HVL для всех четырёх Q без отрицательной residual filtration; 10° оказался слишком жёстким для всех Q, а 15° — не совместим с Q150/Q200. Эти значения являются **model-form probes**, а не измерением или определением реального угла TERAD.
+
+Finite circular source Ø7.5 мм также прошёл отдельный pinned-EGSnrc smoke transport в water и RW3.
 
 ## 5. PTW 30013 Model B1
 
@@ -178,7 +208,9 @@ Run `34931189724`.
 
 Для всех 12 точек использованы 300M histories / 30 batches, принятые TERAD spectra, Model B1, физическая глубина центра камеры 2.0 см в воде и клинические SSD 40/50 см. Максимальная статистическая неопределённость `R_Q,g` < 0.5%.
 
-**Интерпретация:** Stage 5 является baseline для **идеализированной TERAD source model**, описанной в разделе 4. После hardware-informed sensitivity этот набор будет либо подтверждён, либо скорректирован.
+Поле в Stage 5 соответствует указанному клиническому размеру **на поверхности воды**. Для idealized point source это реализовано через эквивалентную геометрическую проекцию на плоскость камеры, как описано в разделе 3.1.
+
+**Интерпретация:** Stage 5 является baseline для idealized TERAD source model. После hardware-informed sensitivity этот набор будет либо подтверждён, либо скорректирован.
 
 Файлы:
 
@@ -200,8 +232,9 @@ Run `34959596116`.
 - physical chamber-centre/reference-point depth = **20 мм = 2.0 см**;
 - камера горизонтальна, ось перпендикулярна CAX;
 - около 10 см RW3 downstream;
-- applicator contact with RW3 surface;
-- SSD 40/50 см до поверхности RW3.
+- аппликатор прижат непосредственно к поверхности RW3;
+- размеры 6×8, 4×15 и 8×10 см² относятся к плоскости этой поверхности / выхода аппликатора;
+- SSD 40/50 см относится к поверхности RW3.
 
 2.0 см — физическая глубина, а не water-equivalent depth.
 
@@ -224,7 +257,7 @@ Run `34959596116`.
 
 Stage 8 gate: 12/12 PASS; max `u(R_direct)=0.44695%`; direct и factorized forms согласуются в пределах 0.00406%.
 
-**Интерпретация:** эти 12 коэффициентов — текущий **идеализированный baseline**. Они уже полезны для физического анализа и предварительного пересчёта, но пока не обозначаются как финальные hardware-specific clinical coefficients. Следующая задача — оценить, насколько они сдвигаются при explicit Be window, finite focal spot и других подтверждённых характеристиках реальной трубки.
+**Интерпретация:** эти 12 коэффициентов — текущий idealized baseline. Они полезны для физического анализа и предварительного пересчёта, но пока не обозначаются как финальные hardware-specific clinical coefficients.
 
 Файлы:
 
@@ -243,9 +276,9 @@ Stage 8 gate: 12/12 PASS; max `u(R_direct)=0.44695%`; direct и factorized forms
 | Q150 | ~1.094 | ~91.4% |
 | Q200 | ~1.068 | ~93.7% |
 
-RW3 therefore не является дозиметрически эквивалентным воде в диапазоне 120–200 кВ. Эффект уменьшается с ростом энергии, но остаётся значимым при 200 кВ.
+RW3 не является дозиметрически эквивалентным воде в диапазоне 120–200 кВ. Эффект уменьшается с ростом энергии, но остаётся значимым при 200 кВ.
 
-Эти значения также относятся к текущей идеализированной source model; Stage 8S2 и последующий hardware-informed spectrum sensitivity покажут устойчивость вывода к более реалистичному описанию трубки.
+Эти значения относятся к idealized source model; Stage 8S2 и Stage 8S3 проверяют устойчивость вывода к более реалистичному описанию трубки.
 
 ## 9. Stage 8S1 — TiO₂ sensitivity F50: завершён
 
@@ -271,11 +304,10 @@ Run **`35067286806`**.
 - F40 6×8 и F40 4×15;
 - Q120/Q140/Q150/Q200;
 - TiO₂ = 1.6% и 2.4%;
-- итого **16 endpoint MC**;
-- 300M histories / 30 batches на точку;
-- используются соответствующие nominal Stage 8 seed pairs.
+- итого 16 endpoint MC;
+- 300M histories / 30 batches на точку.
 
-Preflight и generation accepted TERAD spectra — PASS. Production matrix запущена, max-parallel = 4.
+На момент последней проверки: **2/16 завершены успешно, 4/16 считают, 10/16 в очереди; failures нет**. Preflight и accepted TERAD spectra — PASS.
 
 Workflow: `.github/workflows/stage8s1b-rw3-tio2-all-geometries.yml`.
 
@@ -288,31 +320,21 @@ Run **`35067807801`**.
 Первичный F50-screen:
 
 - SSD 50 см;
-- поле 8×10 см² задано на поверхности;
+- поле 8×10 см² относится к поверхности фантома;
 - Q120/Q140/Q150/Q200;
 - среды water и nominal RW3;
-- scoring depths: **0.001 см (0+), 1.0 см, 2.0 см**;
+- scoring depths: 0.001 см (0+), 1.0 см, 2.0 см;
 - центральный planar scoring circle radius = 0.5 см;
 - 250 linear energy bins от 1 до 251 кэВ (1 кэВ/bin);
 - `egs_fluence_scoring` в отдельном `tutor7pp`, без `egs_chamber` TmpPhsp replay;
 - 50M histories на точку;
-- всего **24 transport points**.
+- всего 24 transport points.
 
-Регистрируются:
+Регистрируются differential photon fluence, integrated fluence, energy fluence, mean/median energy, E10/E25/E50/E75/E90, fractions below 20/30/50 keV и `Phi_RW3(E,z)/Phi_water(E,z)`.
 
-- differential photon fluence `dPhi/dE`;
-- integrated photon fluence;
-- energy fluence;
-- mean and median energy;
-- E10/E25/E50/E75/E90;
-- fractions below 20/30/50 keV;
-- `Phi_RW3(E,z)/Phi_water(E,z)`.
+На момент последней проверки: **18/24 завершены успешно, 4/24 считают, 2/24 в очереди; failures нет**. Полностью закрыты Q120, Q140 и Q150; считает Q200.
 
-Preflight Stage 8S2 — PASS; generation accepted TERAD spectra — PASS; spectral matrix ожидает/получает runners после Stage 8S1b.
-
-Этот этап является физическим объяснением RW3 correction и **не является дополнительным множителем** к `K_Q,g,Co^(RW3→w)`.
-
-Stage 8S2 также пока использует **идеализированную source model**. Его задача — сначала изолировать эффект самой среды water↔RW3. Позже ключевые spectral comparisons будут повторены для hardware-informed source model, чтобы проверить, меняется ли вывод при explicit Be и finite focal spot.
+Stage 8S2 пока использует idealized source model и является физическим объяснением RW3 correction, а **не дополнительным множителем** к `K_Q,g,Co^(RW3→w)`.
 
 Файлы архитектуры:
 
@@ -323,24 +345,53 @@ Stage 8S2 также пока использует **идеализирован�
 - `.github/workflows/stage8s2-water-rw3-spectral-scoring.yml`
 - `docs/STAGE8S2_WATER_RW3_SPECTRAL_SCORING.md`
 
-## 12. Следующие этапы
+## 12. Stage 8S3b — hardware-informed F50 dose comparison: ACTIVE
 
-1. Дождаться Stage 8S1b и сформировать geometry-specific TiO₂ uncertainty.
-2. Дождаться Stage 8S2; при необходимости увеличить histories только для недостаточно точных spectral points.
-3. **Hardware-informed spectrum sensitivity:** explicit Be 0.7/0.8/0.9 мм при сохранении measured HVL и residual equivalent-filtration fit.
-4. **kVp sensitivity:** endpoints, соответствующие технической точности 0.25%, с повторным контролем HVL/spectrum.
-5. **Anode-angle model-form sensitivity:** несколько физически разумных углов, потому что реальный угол анода пока неизвестен; 30–40° beam-opening data не подменяют anode angle.
-6. **Finite focal spot sensitivity:** point source ↔ circular focal spot Ø7.5 мм.
+Run **`35072405754`**.
+
+Preflight — PASS; explicit-Be hardware spectrum generation/gate — PASS; обновлённый finite circular source Ø7.5 мм с physical aperture непосредственно на поверхности фантома — smoke PASS.
+
+Production design:
+
+- Q120/Q140/Q150/Q200;
+- F50, SSD 50 см, клиническое поле 8×10 см² на поверхности;
+- matched water и nominal RW3;
+- hardware-informed spectrum `Be=0.8 мм`, current screening `th=20°`, measured-HVL constrained residual filtration;
+- source models: point и finite circular Ø7.5 мм;
+- 300M histories / 30 batches;
+- всего **16 production points**;
+- max-parallel = 2, чтобы не вытеснять 8S1b/8S2.
+
+Для каждого source model water numerator и RW3 chamber denominator рассчитываются с **одним и тем же hardware-informed spectrum**:
+
+`K_variant = [D_w,water,variant / D_cav,RW3,variant] / R_Co`.
+
+Так отдельно оцениваются:
+
+`ΔK_spectrum = K_hardware,point / K_idealized,point - 1`,
+
+`ΔK_focal = K_hardware,finite / K_hardware,point - 1`.
+
+На момент последней проверки prerequisites полностью PASS; **2/16 production MC уже считают (Q120 hardware-point: water и RW3), 14/16 в очереди; failures нет**.
+
+## 13. Следующие этапы
+
+1. Завершить Stage 8S1b и получить geometry-specific TiO₂ uncertainty для всех 12 конфигураций.
+2. Завершить Stage 8S2 и количественно описать spectral transfer water↔RW3 по глубине.
+3. Завершить Stage 8S3b: определить влияние explicit Be/HVL-constrained hardware spectrum и finite Ø7.5 мм focal spot на `K`.
+4. Расширить hardware spectrum sensitivity: Be = 0.7/0.8/0.9 мм и kVp endpoints ±0.25%.
+5. Anode-angle model-form sensitivity: использовать только как screening/model uncertainty до появления реальной спецификации; 30–40° beam-opening не подменяют anode angle.
+6. При необходимости повторить ключевой spectral water↔RW3 comparison для принятой hardware-informed source model.
 7. RW3 geometry sensitivity: physical depth, slab-thickness tolerance, accumulated overlying thickness, air gaps/contact.
 8. Rectangular-field orientation: 6×8↔8×6 и 4×15↔15×4 относительно chamber axis/stem.
-9. PTW30013 model-form uncertainty в пределах benchmark-compatible model space без tuning к TERAD.
-10. Applicator/head limitation: оценка unknown proprietary body scatter; при появлении размеров/материалов — отдельный MC sensitivity.
-11. Сопоставить idealized и hardware-informed coefficients через `ΔK = K_realistic/K_idealized - 1` для всех клинических конфигураций.
+9. PTW30013 model-form uncertainty в benchmark-compatible model space без tuning к TERAD.
+10. Applicator/head limitation: оценить unknown proprietary body scatter; при появлении размеров/материалов — отдельный MC sensitivity.
+11. После выбора hardware-informed nominal model распространить её с F50 на все 12 клинических конфигураций.
 12. Экспериментальная валидация реальными измерениями PTW30013 в RW3.
 13. Финальный uncertainty budget: MC statistics, Co-60 anchor, TiO₂, RW3 geometry, source hardware, spectrum ambiguity, orientation, chamber model, positioning и experimental components.
 14. Финальная клиническая таблица `K_Q,g,Co^(RW3→w)`, `u_c`, `U(k=2)`, область применимости и ограничения.
 
-## 13. Текущий статус
+## 14. Текущий статус
 
 | Этап | Содержание | Статус |
 |---:|---|---|
@@ -351,25 +402,29 @@ Stage 8S2 также пока использует **идеализирован�
 | 5 | matched-water TERAD — idealized source baseline | ✅ 12/12 PASS |
 | 8 | direct RW3→water — idealized source baseline | ✅ 12/12 PASS |
 | 8S1 | TiO₂ F50 screen | ✅ complete |
-| 8S1b | TiO₂ all F40 geometries | 🟡 ACTIVE |
-| 8S2 | water↔RW3 spectral scoring, idealized source | 🟡 ACTIVE |
-| 8S3 | hardware-informed source/spectrum sensitivity: Be, kVp, anode angle, focal spot | ⏳ NEXT |
+| 8S1b | TiO₂ all F40 geometries | 🟡 ACTIVE — 2/16 done, 4 running |
+| 8S2 | water↔RW3 spectral scoring, idealized source | 🟡 ACTIVE — 18/24 done, 4 running |
+| 8S3a | explicit-Be / kVp / anode-angle spectrum feasibility + focal-spot smoke | ✅ PASS |
+| 8S3b | hardware-informed F50 water/RW3, point↔Ø7.5 мм | 🟡 ACTIVE — 2/16 running |
 | 9 | geometry/orientation/chamber/applicator sensitivities | ⏳ |
 | 10 | experimental validation + final uncertainty | ⏳ |
 
-## 14. Зафиксированные правила проекта
+## 15. Зафиксированные правила проекта
 
 - measured TERAD HVL не меняются ради улучшения agreement;
+- клинические размеры полей F40/F50 относятся к **поверхности фантома / контактной плоскости выхода аппликатора**, а не к глубине камеры;
+- в idealized point-source Stage 5/8 размер поля на поверхности уже был реализован корректно через эквивалентную проекцию; это не является обнаруженной ошибкой старых расчётов;
+- для finite source Ø7.5 мм physical aperture задаётся непосредственно в плоскости поверхности, потому что point-source projection больше не является строго эквивалентной для всех точек распределённого источника;
 - известные hardware parameters не прячутся в nuisance parameters после того, как становятся доступными: Be-окно должно моделироваться явно в hardware-informed stage;
 - nominal 20° anode angle не считается реальной спецификацией TERAD без подтверждающей документации;
 - угол раскрытия полезного пучка 30–40° не интерпретируется как anode angle;
-- finite focal spot Ø7.5 мм должен быть отдельно проверен относительно point-source baseline;
+- finite focal spot Ø7.5 мм проверяется относительно point-source baseline;
 - chamber geometry не подгоняется после benchmark validation;
 - одинаковый HVL не означает однозначный spectrum;
 - missing proprietary applicator geometry не выдумывается;
 - RW3 physical depth = 2.0 см и не переопределяется как water-equivalent depth;
 - direct coefficient не умножается повторно на отдельные `k_Q`, `k_g` или `D_w/D_RW3`;
-- текущие Stage 5/8 coefficients являются **идеализированным baseline**, а не окончательной hardware-specific truth;
+- Stage 5/8 coefficients являются **idealized baseline**, а не окончательной hardware-specific truth;
 - nominal MC statistical uncertainty не является полной клинической uncertainty;
 - technical CI failure не трактуется как physical MC failure.
 
