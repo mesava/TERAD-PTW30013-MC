@@ -1,0 +1,118 @@
+name: Stage 8S2c final spectral precision closeout
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage8s2c-final-precision-closeout.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  spectra:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - run: python scripts/generate_spekpy_spectra.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s2c-terad-spectra
+          path: spectra/*.ensrc
+
+  refine:
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      BEAM: Q140
+      MEDIUM: water
+      DEPTH_CM: '2.0'
+      DEPTH_TAG: d2p0
+      SEED1: '9201'
+      SEED2: '9301'
+      NCASE: '80000000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage8s2c-terad-spectra
+          path: stage8s2_spectra
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run final refined spectral point
+        run: bash scripts/run_stage8s2_spectral_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s2c-point-Q140-water-d2p0
+          path: |
+            stage8s2_summary_Q140_water_d2p0.csv
+            stage8s2_spectrum_Q140_water_d2p0.csv
+
+  evaluate:
+    needs: refine
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download original 24 Stage 8S2 points
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s2-point-*
+          path: combined
+          merge-multiple: true
+          repository: mesava/TERAD-PTW30013-MC
+          run-id: 35067807801
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Stage 8S2b refined points
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s2b-point-*
+          path: refined_b
+          merge-multiple: true
+          repository: mesava/TERAD-PTW30013-MC
+          run-id: 35184729305
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Stage 8S2c final point
+        uses: actions/download-artifact@v4
+        with:
+          name: stage8s2c-point-Q140-water-d2p0
+          path: refined_c
+
+      - name: Overlay Stage 8S2b then Stage 8S2c points
+        run: |
+          cp -f refined_b/stage8s2_summary_*.csv refined_b/stage8s2_spectrum_*.csv combined/
+          cp -f refined_c/stage8s2_summary_*.csv refined_c/stage8s2_spectrum_*.csv combined/
+
+      - name: Evaluate final combined Stage 8S2 set
+        id: eval
+        continue-on-error: true
+        run: |
+          python scripts/evaluate_stage8s2_spectral.py \
+            --summaries-glob 'combined/stage8s2_summary_*.csv' \
+            --spectra-glob 'combined/stage8s2_spectrum_*.csv' \
+            --output-summary stage8s2c_water_rw3_spectral_summary.csv \
+            --output-ratios stage8s2c_water_rw3_spectral_ratios.csv \
+            --gate-output stage8s2c_gate.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage8s2c-water-rw3-spectral-summary
+          path: |
+            stage8s2c_water_rw3_spectral_summary.csv
+            stage8s2c_water_rw3_spectral_ratios.csv
+            stage8s2c_gate.txt
+
+      - name: Enforce precision gate
+        if: steps.eval.outcome != 'success'
+        run: exit 1
