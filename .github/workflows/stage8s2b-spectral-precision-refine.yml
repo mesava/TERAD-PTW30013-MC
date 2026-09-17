@@ -1,0 +1,123 @@
+name: Stage 8S2b spectral precision refinement
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage8s2b-spectral-precision-refine.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  spectra:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - run: python scripts/generate_spekpy_spectra.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s2b-terad-spectra
+          path: spectra/*.ensrc
+
+  refine:
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {beam: Q200, medium: water, depth: '2.0', tag: d2p0, ncase: '86000000', seed1: '9001', seed2: '9101'}
+          - {beam: Q200, medium: rw3, depth: '2.0', tag: d2p0, ncase: '84000000', seed1: '9002', seed2: '9102'}
+          - {beam: Q120, medium: water, depth: '2.0', tag: d2p0, ncase: '75000000', seed1: '9003', seed2: '9103'}
+          - {beam: Q150, medium: rw3, depth: '2.0', tag: d2p0, ncase: '70000000', seed1: '9004', seed2: '9104'}
+          - {beam: Q200, medium: water, depth: '1.0', tag: d1p0, ncase: '70000000', seed1: '9005', seed2: '9105'}
+          - {beam: Q140, medium: rw3, depth: '2.0', tag: d2p0, ncase: '69000000', seed1: '9006', seed2: '9106'}
+          - {beam: Q200, medium: rw3, depth: '1.0', tag: d1p0, ncase: '69000000', seed1: '9007', seed2: '9107'}
+          - {beam: Q120, medium: rw3, depth: '2.0', tag: d2p0, ncase: '63000000', seed1: '9008', seed2: '9108'}
+          - {beam: Q150, medium: water, depth: '2.0', tag: d2p0, ncase: '61000000', seed1: '9009', seed2: '9109'}
+          - {beam: Q120, medium: water, depth: '1.0', tag: d1p0, ncase: '61000000', seed1: '9010', seed2: '9110'}
+          - {beam: Q140, medium: water, depth: '2.0', tag: d2p0, ncase: '58000000', seed1: '9011', seed2: '9111'}
+    env:
+      BEAM: ${{ matrix.beam }}
+      MEDIUM: ${{ matrix.medium }}
+      DEPTH_CM: ${{ matrix.depth }}
+      DEPTH_TAG: ${{ matrix.tag }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+      NCASE: ${{ matrix.ncase }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage8s2b-terad-spectra
+          path: stage8s2_spectra
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run refined spectral point
+        run: bash scripts/run_stage8s2_spectral_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s2b-point-${{ matrix.beam }}-${{ matrix.medium }}-${{ matrix.tag }}
+          path: |
+            stage8s2_summary_${{ matrix.beam }}_${{ matrix.medium }}_${{ matrix.tag }}.csv
+            stage8s2_spectrum_${{ matrix.beam }}_${{ matrix.medium }}_${{ matrix.tag }}.csv
+
+  evaluate:
+    needs: refine
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download original 24 Stage 8S2 points
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s2-point-*
+          path: combined
+          merge-multiple: true
+          repository: mesava/TERAD-PTW30013-MC
+          run-id: 35067807801
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download refined points
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s2b-point-*
+          path: refined
+          merge-multiple: true
+
+      - name: Overlay refined points on original set
+        run: cp -f refined/stage8s2_summary_*.csv refined/stage8s2_spectrum_*.csv combined/
+
+      - name: Evaluate combined refined Stage 8S2 set
+        id: eval
+        continue-on-error: true
+        run: |
+          python scripts/evaluate_stage8s2_spectral.py \
+            --summaries-glob 'combined/stage8s2_summary_*.csv' \
+            --spectra-glob 'combined/stage8s2_spectrum_*.csv' \
+            --output-summary stage8s2b_water_rw3_spectral_summary.csv \
+            --output-ratios stage8s2b_water_rw3_spectral_ratios.csv \
+            --gate-output stage8s2b_gate.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage8s2b-water-rw3-spectral-summary
+          path: |
+            stage8s2b_water_rw3_spectral_summary.csv
+            stage8s2b_water_rw3_spectral_ratios.csv
+            stage8s2b_gate.txt
+
+      - name: Enforce precision gate
+        if: steps.eval.outcome != 'success'
+        run: exit 1
