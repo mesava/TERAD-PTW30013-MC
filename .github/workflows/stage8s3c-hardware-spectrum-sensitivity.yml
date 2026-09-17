@@ -1,0 +1,178 @@
+name: Stage 8S3c hardware spectrum sensitivity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage8s3c-hardware-spectrum-sensitivity.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Stage 8S3c code
+        run: |
+          python -m py_compile scripts/generate_stage8s3c_spectra.py
+          python -m py_compile scripts/build_stage8s3_input.py
+          python -m py_compile scripts/summarize_stage8s3b_point.py
+          python -m py_compile scripts/evaluate_stage8s3c_f50.py
+      - name: Verify finite-source clinical surface aperture
+        run: |
+          python scripts/build_stage8s3_input.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/stage8s3c.egsinp \
+            --medium rw3 --source-model finite_7p5mm \
+            --beam Q140 --ssd 50 --field-x 8 --field-y 10 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 12001 --seed2 22001
+          grep -Fq 'library = egs_circle' /tmp/stage8s3c.egsinp
+          grep -Fq 'radius = 0.375000' /tmp/stage8s3c.egsinp
+          grep -Fq 'rectangle = -4.00000000 -5.00000000 4.00000000 5.00000000' /tmp/stage8s3c.egsinp
+          grep -Fq 'translation = 0 0 -2.000000' /tmp/stage8s3c.egsinp
+
+  spectra:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - name: Generate separated Stage 8S3c spectrum variants
+        run: python scripts/generate_stage8s3c_spectra.py
+      - name: Gate spectrum matrix and physical policies
+        run: |
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+          rows=list(csv.DictReader(open('stage8s3c_spectrum_summary.csv')))
+          prod=[r for r in rows if r['family']!='nominal_reference']
+          assert len(rows)==28, len(rows)
+          assert len(prod)==24, len(prod)
+          variants=sorted(set(r['variant'] for r in prod))
+          assert len(variants)==6, variants
+          for r in prod:
+              assert r['feasible']=='1'
+              if r['mode']=='hvl_refit':
+                  assert abs(float(r['hvl_rel_error_pct'])) <= 0.500001
+              elif r['mode']=='fixed_nominal_filtration':
+                  # kVp sensitivity must not be hidden by a new filtration fit.
+                  assert 'fixed' in r['note'].lower() or 'held_fixed' in r['note'].lower()
+              else:
+                  raise AssertionError(r['mode'])
+              p=Path('stage8s3c_spectra')/r['variant']/(r['beam']+'.ensrc')
+              assert p.is_file() and p.stat().st_size>0, p
+          print('Stage 8S3c spectrum matrix PASS:', variants)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3c-spectra
+          path: |
+            stage8s3c_spectra/
+            stage8s3c_spectrum_summary.csv
+
+  production:
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        variant:
+          - be0p7_a20_hvlfit
+          - be0p9_a20_hvlfit
+          - kvp_low_fixedfiltration
+          - kvp_high_fixedfiltration
+          - be0p8_a25_hvlfit
+          - be0p8_a30_hvlfit
+        beam: [Q120, Q140, Q150, Q200]
+        medium: [water, rw3]
+    env:
+      SPECTRUM_VARIANT: ${{ matrix.variant }}
+      BEAM: ${{ matrix.beam }}
+      MEDIUM: ${{ matrix.medium }}
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      EGSRUN: /tmp/EGSnrc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage8s3c-spectra
+          path: .
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Stage 8S3c 300M finite-source point
+        run: |
+          case "$SPECTRUM_VARIANT" in
+            be0p7_a20_hvlfit) VCODE=1 ;;
+            be0p9_a20_hvlfit) VCODE=2 ;;
+            kvp_low_fixedfiltration) VCODE=3 ;;
+            kvp_high_fixedfiltration) VCODE=4 ;;
+            be0p8_a25_hvlfit) VCODE=5 ;;
+            be0p8_a30_hvlfit) VCODE=6 ;;
+            *) exit 2 ;;
+          esac
+          case "$BEAM" in
+            Q120) BCODE=1 ;;
+            Q140) BCODE=2 ;;
+            Q150) BCODE=3 ;;
+            Q200) BCODE=4 ;;
+            *) exit 2 ;;
+          esac
+          case "$MEDIUM" in
+            water) MCODE=1 ;;
+            rw3) MCODE=2 ;;
+            *) exit 2 ;;
+          esac
+          export SEED1=$((12000 + VCODE*100 + BCODE*10 + MCODE))
+          export SEED2=$((22000 + VCODE*100 + BCODE*10 + MCODE))
+          bash scripts/run_stage8s3c_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3c-${{ matrix.variant }}-${{ matrix.beam }}-${{ matrix.medium }}
+          path: stage8s3c_point_${{ matrix.variant }}_${{ matrix.beam }}_${{ matrix.medium }}.csv
+
+  evaluate:
+    needs: production
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s3c-*-Q*-*
+          path: stage8s3c_points
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage8s3c-spectra
+          path: stage8s3c_meta
+      - name: Evaluate Be, kVp and anode-angle sensitivity
+        run: |
+          python scripts/evaluate_stage8s3c_f50.py \
+            --points-glob 'stage8s3c_points/stage8s3c_point_*.csv' \
+            --rco results/stage4_co60_summary.csv \
+            --nominal results/stage8s3b_f50_hardware_source_summary.csv \
+            --spectrum-summary stage8s3c_meta/stage8s3c_spectrum_summary.csv \
+            --output stage8s3c_f50_hardware_sensitivity_summary.csv \
+            --gate-output stage8s3c_gate.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3c-f50-hardware-sensitivity-summary
+          path: |
+            stage8s3c_f50_hardware_sensitivity_summary.csv
+            stage8s3c_gate.txt
+            stage8s3c_meta/stage8s3c_spectrum_summary.csv
