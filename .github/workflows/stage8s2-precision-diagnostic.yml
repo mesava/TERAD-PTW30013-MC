@@ -1,0 +1,51 @@
+name: Stage 8S2 precision diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage8s2-precision-diagnostic.yml'
+      - 'scripts/diagnose_stage8s2_precision.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download completed Stage 8S2 point artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s2-point-*
+          path: stage8s2_points
+          merge-multiple: true
+          repository: mesava/TERAD-PTW30013-MC
+          run-id: 35067807801
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Diagnose precision gate
+        run: |
+          python scripts/diagnose_stage8s2_precision.py \
+            --summaries-glob 'stage8s2_points/stage8s2_summary_*.csv' \
+            --output stage8s2_precision_diagnostic.csv \
+            --report stage8s2_precision_report.txt \
+            --baseline-histories 50000000 \
+            --target-p95-pct 5.0 \
+            --safety-factor 1.15
+
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8s2-precision-diagnostic
+          path: |
+            stage8s2_precision_diagnostic.csv
+            stage8s2_precision_report.txt
