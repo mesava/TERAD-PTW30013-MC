@@ -1,0 +1,4 @@
+gate_pass=true
+points=24
+criterion=p95 relative uncertainty of active spectral bins <= 5%
+max_p95_rel_u_active_bins_pct=4.96714
