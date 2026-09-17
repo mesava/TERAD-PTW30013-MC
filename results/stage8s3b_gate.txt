@@ -1,0 +1,8 @@
+gate_pass=true
+points=8/8
+max_u_R_direct_pct=0.454990
+max_abs_hardware_point_vs_idealized_pct=1.613336
+max_abs_finite_vs_hardware_point_pct=0.947310
+spectrum_variant=hw_be0p8_a20
+geometry=F50_8x10_SSD50
+note=hardware spectrum uses explicit Be 0.8 mm, nominal 20-deg screening angle, nonnegative residual-Al HVL constraint
