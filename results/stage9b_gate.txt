@@ -1,0 +1,12 @@
+gate_pass=true
+orientation_comparisons=8/8
+new_transport_points=16/16
+max_u_R_direct_rotated_pct=0.409883
+max_abs_delta_K_orientation_pct=1.553525
+max_z_orientation_shift=2.670450
+chamber_longitudinal_axis=x
+baseline_fields=4x15,6x8
+rotated_fields=15x4,8x6
+source_model=finite_7p5mm
+spectrum_variant=hw_be0p8_a20
+note=R_Co cancels in rotated/nominal comparison; baseline transport is reused from Stage 8S3d
