@@ -2,7 +2,7 @@
 
 Monte Carlo проект для определения поправочных коэффициентов для ионизационной камеры **PTW 30013 SN 013488** при клинической дозиметрии киловольтного рентгенотерапевтического аппарата **TERAD 200**.
 
-> **Текущий статус:** Model B1 benchmark — PASS; Co-60 anchor — PASS; TERAD matched-water — 12/12 PASS; direct RW3→water baseline — 12/12 PASS; Stage 8S1/8S1b TiO₂ sensitivity — завершены; **Stage 8S2 water↔RW3 spectral scoring — окончательно PASS после targeted refinement, 24/24 и max p95 = 4.96714%**; Stage 8S3a hardware feasibility — PASS; Stage 8S3b hardware-informed F50 — 16/16 + PASS; **Stage 8S3c Be/kVp/anode-angle hardware-spectrum sensitivity — 48/48 transport points, 24/24 K, PASS**; **Stage 8S3d nominal hardware-informed F40 extension — workflow launched**.
+> **Текущий статус:** Model B1 benchmark — PASS; Co-60 anchor — PASS; TERAD matched-water — 12/12 PASS; direct RW3→water baseline — 12/12 PASS; Stage 8S1/8S1b TiO₂ sensitivity — завершены; **Stage 8S2 water↔RW3 spectral scoring — окончательно PASS после targeted refinement, 24/24 и max p95 = 4.96714%**; Stage 8S3a hardware feasibility — PASS; Stage 8S3b hardware-informed F50 — 16/16 + PASS; **Stage 8S3c Be/kVp/anode-angle hardware-spectrum sensitivity — 48/48 transport points, 24/24 K, PASS**; **Stage 8S3d nominal hardware-informed all clinical geometries — 12/12 K, PASS**; **Stage 9B rectangular-field orientation sensitivity — ACTIVE, run `35350432200`**.
 >
 > **Ключевая интерпретация:** Stage 5/8 остаются контролируемым idealized/HVL-constrained baseline. Stage 8S3 показал, что explicit Be и finite focal spot способны менять `K` на величину порядка 1–2%. Номинальная hardware-informed source model для дальнейшей работы зафиксирована как **explicit Be 0.8 мм + screening `th=20°` + nonnegative residual-Al HVL fit + finite circular source Ø7.5 мм**. Stage 8S3c не выявил hardware-spectrum perturbation >1.23% в исследованном model/operational space и не требует полного high-statistics rerun. До завершения RW3/geometry/orientation/chamber/applicator sensitivities nominal `K` ещё не объявляются окончательной clinical truth.
 
@@ -362,31 +362,88 @@ Artifacts/output names:
 - `stage8s3c_spectrum_summary.csv`;
 - `stage8s3c_gate.txt`.
 
-## 12.4. Stage 8S3d — nominal hardware-informed extension to all clinical geometries
+## 12.4. Stage 8S3d — nominal hardware-informed coefficients for all clinical geometries: PASS
 
-Следующий расчёт не повторяет уже готовый F50. Он переносит принятую nominal source model на две F40 геометрии:
+Run **`35310712443`**.
+
+Stage 8S3d перенёс принятую nominal hardware-informed source model на обе F40 геометрии без повторного пересчёта уже готового F50:
 
 - F40 / SSD40 / 4×15 см²;
-- F40 / SSD40 / 6×8 см².
+- F40 / SSD40 / 6×8 см²;
+- F50 / SSD50 / 8×10 см² — переиспользован из Stage 8S3b.
 
-Матрица Stage 8S3d содержит **4 Q × 2 F40 fields × water/RW3 = 16 новых transport points** по 300M histories. Четыре F50 `K` переиспользуются из Stage 8S3b. Evaluator должен собрать единую таблицу **12/12 clinical hardware-informed K** и сравнить её с idealized Stage 8.
+Production: **16/16 новых F40 transport points PASS**; evaluator: **12/12 clinical K PASS**.
 
-Workflow:
+Gate:
 
-- `.github/workflows/stage8s3d-hardware-all-geometries.yml`;
-- `scripts/run_stage8s3d_point.sh`;
-- `scripts/summarize_stage8s3d_point.py`;
-- `scripts/evaluate_stage8s3d_all_geometries.py`.
+- `clinical_K_rows = 12/12`;
+- `new_f40_transport_points = 16/16`;
+- `reused_f50_rows = 4/4`;
+- max `u(R_direct) = 0.446753%`;
+- max `|ΔK|` относительно idealized Stage 8 = **1.224607%**.
 
-## 13. Следующие этапы
+Файлы:
 
-1. **Stage 8S3d:** получить nominal hardware-informed finite-source `K` для двух F40 полей и собрать единую таблицу **12/12 clinical geometries**.
-2. **Stage 9A — RW3/depth geometry sensitivity:** physical chamber-centre depth, accumulated top-stack thickness и clinically plausible contact/air-gap perturbations. Численные bounds задавать только из реальных допусков/измерений, не придумывать.
-3. **Stage 9B — rectangular-field orientation:** 6×8↔8×6 и 4×15↔15×4 относительно chamber axis/stem; это можно исследовать независимо от proprietary applicator body.
-4. **Stage 9C — PTW30013 model-form sensitivity:** только в benchmark-compatible chamber-model space; geometry после benchmark не подгонять к TERAD.
-5. **Applicator/head limitation:** proprietary body scatter не выдумывать; моделировать отдельно только при появлении документированных материалов/размеров.
-6. Экспериментальная validation PTW30013 в RW3.
-7. Финальный uncertainty budget: отдельно standard uncertainties, bounded/model-form sensitivity envelopes и limitations; затем итоговые `K`, `u_c`, `U(k=2)` с областью применимости.
+- `results/stage8s3d_all_geometries_hardware_nominal_summary.csv`;
+- `results/stage8s3d_gate.txt`.
+
+### 12.5. Рабочая nominal-таблица коэффициентов качества/геометрии
+
+Ниже приведены текущие рабочие коэффициенты
+
+[
+K_{Q,g,Co}^{RW3\to w}
+=
+\frac{D_{w,Q,g}^{water}/D_{cav,Q,g}^{RW3}}{R_{Co}}
+]
+
+для PTW30013 SN013488, physical depth 2.0 см, contact applicator geometry и nominal hardware-informed source model:
+
+**W target + Be 0.8 мм + clinical Al/Cu + nonnegative residual-Al HVL fit + finite circular source Ø7.5 мм.**
+
+| Качество | F40 4×15 | `u_K`, % | F40 6×8 | `u_K`, % | F50 8×10 | `u_K`, % |
+|---|---:|---:|---:|---:|---:|---:|
+| Q120 | **0.900806** | 0.414 | **0.897761** | 0.367 | **0.888856** | 0.450 |
+| Q140 | **0.924808** | 0.418 | **0.916203** | 0.370 | **0.916741** | 0.452 |
+| Q150 | **0.951920** | 0.423 | **0.943819** | 0.374 | **0.943263** | 0.456 |
+| Q200 | **0.966342** | 0.409 | **0.961850** | 0.363 | **0.957464** | 0.443 |
+
+Эти значения являются **nominal hardware-informed coefficients**, а не ещё окончательной полной clinical truth: к ним не добавляются повторно `k_Q`, `k_g` или `D_w/D_RW3`. Значения `u_K` здесь содержат MC statistical uncertainty direct transfer + uncertainty общего Co-60 anchor; они **не являются финальной полной клинической uncertainty**.
+
+Для применения:
+
+[
+D_w=M_{corr}\,N_{D,w}(Co-60)\,K_{Q,g,Co}^{RW3\to w}.
+]
+
+### 12.6. Соглашение по ориентации прямоугольного поля
+
+В Model B1 продольная ось PTW30013 направлена вдоль **X**:
+
+`axis = 2.15 0 0  -1 0 0`.
+
+Поэтому запись поля `X×Y` в текущей модели имеет физический смысл:
+
+- 4×15 → 4 см вдоль продольной оси камеры, 15 см поперёк;
+- 6×8 → 6 см вдоль продольной оси камеры, 8 см поперёк.
+
+Stage 9B выполняет чистый поворот прямоугольного поля на 90° при неизменных spectrum/RW3/depth/SSD/source:
+
+- 4×15 ↔ **15×4**;
+- 6×8 ↔ **8×6**.
+
+Это позволяет отдельно оценить чувствительность `K` к ориентации поля относительно неосесимметричной продольной геометрии камеры. Текущий baseline convention пока не объявляется фактической ориентацией клинического аппликатора без отдельного подтверждения реальной установки.
+
+## 13. Road map
+
+1. ✅ **Stage 8S3d — nominal hardware-informed 12/12 K:** завершён; текущая рабочая nominal-таблица зафиксирована в `results/stage8s3d_all_geometries_hardware_nominal_summary.csv`.
+2. 🟡 **Stage 9B — rectangular-field orientation sensitivity:** ACTIVE, run `35350432200`. Считаются только новые rotated geometries 15×4 и 8×6; nominal 4×15 и 6×8 переиспользуются из Stage 8S3d.
+3. ⏳ **Stage 9A — RW3/depth geometry sensitivity:** physical chamber-centre depth, accumulated top-stack thickness и clinically plausible contact/air-gap perturbations. Численные bounds задавать только из реальных измерений/допусков, не придумывать.
+4. ⏳ **Stage 9C — PTW30013 model-form sensitivity:** только в benchmark-compatible chamber-model space; geometry после benchmark не подгонять к TERAD.
+5. ⏳ **Applicator/head model limitation:** proprietary body scatter не выдумывать; моделировать отдельно только при появлении документированных материалов/размеров.
+6. ⏳ **Experimental validation PTW30013 in RW3:** проверить nominal MC transfer в доступной клинической геометрии.
+7. ⏳ **Final uncertainty budget:** отдельно MC statistics, operational standard uncertainties, bounded/model-form sensitivity envelopes и unresolved limitations.
+8. ⏳ **Final clinical table:** после validation/uncertainty closeout утвердить `K`, `u_c`, `U(k=2)`, область применимости и правила выбора коэффициента по Q/applicator/orientation.
 
 ## 14. Текущий статус
 
@@ -406,8 +463,10 @@ Workflow:
 | 8S3a | hardware spectrum feasibility + finite-source smoke | ✅ PASS |
 | 8S3b | hardware-informed F50 point↔Ø7.5 мм | ✅ 16/16 + PASS |
 | 8S3c | Be/kVp/anode-angle F50 finite-source sensitivity | ✅ 48/48 transport; 24/24 K; PASS |
-| 8S3d | nominal hardware-informed finite-source F40 extension | 🟡 launched — 16 new transport points; F50 reused |
-| 9 | RW3/geometry/orientation/chamber/applicator sensitivities | ⏳ |
+| 8S3d | nominal hardware-informed coefficients, all clinical geometries | ✅ 16/16 new F40 transport; 12/12 K; PASS |
+| 9B | F40 rectangular-field orientation 4×15↔15×4, 6×8↔8×6 | 🟡 ACTIVE — run `35350432200` |
+| 9A | RW3 depth / stack / contact-gap sensitivity | ⏳ awaiting defensible physical bounds |
+| 9C | PTW30013 benchmark-compatible model-form sensitivity | ⏳ |
 | 10 | experimental validation + final uncertainty | ⏳ |
 
 ## 15. Зафиксированные правила проекта
@@ -428,7 +487,8 @@ Workflow:
 - RW3 physical depth = 2.0 см, не water-equivalent depth;
 - direct coefficient не умножается повторно на `k_Q`, `k_g` или `D_w/D_RW3`;
 - Stage 5/8 = **idealized baseline**;
-- Stage 8S3 = **hardware-informed comparison**, пока не финальная truth;
+- Stage 8S3 = **hardware-informed source-model qualification**; Stage 8S3d задаёт текущую nominal 12/12 table, но она остаётся subject to geometry/orientation/model/validation closeout;
+- первая размерность прямоугольного поля в MC относится к X и, следовательно, к продольной оси PTW30013; поворот поля исследуется отдельно в Stage 9B;
 - nominal MC statistics не равны полной clinical uncertainty;
 - endpoint spans не превращаются автоматически в standard uncertainty без обоснованной probability model;
 - technical CI failure не трактуется как physical MC failure.
