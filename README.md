@@ -391,11 +391,11 @@ Gate:
 
 Ниже приведены текущие рабочие коэффициенты
 
-[
+$
 K_{Q,g,Co}^{RW3\to w}
 =
 \frac{D_{w,Q,g}^{water}/D_{cav,Q,g}^{RW3}}{R_{Co}}
-]
+$
 
 для PTW30013 SN013488, physical depth 2.0 см, contact applicator geometry и nominal hardware-informed source model:
 
@@ -412,9 +412,9 @@ K_{Q,g,Co}^{RW3\to w}
 
 Для применения:
 
-[
+$
 D_w=M_{corr}\,N_{D,w}(Co-60)\,K_{Q,g,Co}^{RW3\to w}.
-]
+$
 
 ### 12.6. Соглашение по ориентации прямоугольного поля
 
