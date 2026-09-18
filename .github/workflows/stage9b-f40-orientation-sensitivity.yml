@@ -1,0 +1,167 @@
+name: Stage 9B F40 rectangular-field orientation sensitivity
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage9b-f40-orientation-sensitivity.yml'
+      - 'scripts/run_stage9b_orientation_point.sh'
+      - 'scripts/summarize_stage9b_orientation_point.py'
+      - 'scripts/evaluate_stage9b_orientation.py'
+      - 'scripts/build_stage8s3_input.py'
+      - 'scripts/generate_stage8s3_hardware_spectra.py'
+      - 'scripts/evaluate_stage8s3_hardware_spectra.py'
+      - 'scripts/build_stage5_terad_water_b1.py'
+      - 'scripts/build_stage8_terad_rw3_b1.py'
+      - 'data/beam_qualities.csv'
+      - 'results/stage8s3d_all_geometries_hardware_nominal_summary.csv'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Stage 9B code
+        run: |
+          python -m py_compile scripts/build_stage8s3_input.py
+          python -m py_compile scripts/summarize_stage9b_orientation_point.py
+          python -m py_compile scripts/evaluate_stage9b_orientation.py
+          python -m py_compile scripts/generate_stage8s3_hardware_spectra.py
+          python -m py_compile scripts/evaluate_stage8s3_hardware_spectra.py
+      - name: Verify rotated F40 apertures and chamber-axis convention
+        run: |
+          python scripts/build_stage8s3_input.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/f40_15x4.egsinp --medium water --source-model finite_7p5mm \
+            --beam Q120 --ssd 40 --field-x 15 --field-y 4 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 1011 --seed2 2011
+          python scripts/build_stage8s3_input.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/f40_8x6.egsinp --medium rw3 --source-model finite_7p5mm \
+            --beam Q120 --ssd 40 --field-x 8 --field-y 6 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 1012 --seed2 2012
+          grep -Fq 'axis = 2.15 0 0  -1 0 0' /tmp/f40_15x4.egsinp
+          grep -Fq 'rectangle = -7.50000000 -2.00000000 7.50000000 2.00000000' /tmp/f40_15x4.egsinp
+          grep -Fq 'translation = 0 0 -2.000000' /tmp/f40_15x4.egsinp
+          grep -Fq 'axis = 2.15 0 0  -1 0 0' /tmp/f40_8x6.egsinp
+          grep -Fq 'rectangle = -4.00000000 -3.00000000 4.00000000 3.00000000' /tmp/f40_8x6.egsinp
+          grep -Fq 'translation = 0 0 -2.000000' /tmp/f40_8x6.egsinp
+
+  spectra:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - name: Regenerate nominal hardware-informed spectra
+        run: |
+          python scripts/generate_stage8s3_hardware_spectra.py
+          python scripts/evaluate_stage8s3_hardware_spectra.py \
+            --summary stage8s3_spectrum_feasibility.csv \
+            --output stage8s3_spectrum_gate.txt
+          python - <<'PY'
+          import csv
+          rows=list(csv.DictReader(open('stage8s3_spectrum_feasibility.csv')))
+          cand=[r for r in rows if r['variant']=='hw_be0p8_a20']
+          assert len(cand)==4
+          assert all(r['feasible_nonnegative_residual_al']=='1' for r in cand)
+          PY
+          for b in Q120 Q140 Q150 Q200; do
+            test -s "stage8s3_spectra/hw_be0p8_a20/${b}.ensrc"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage9b-hardware-spectra
+          path: |
+            stage8s3_spectra/hw_be0p8_a20/*.ensrc
+            stage8s3_spectra/hw_be0p8_a20/*.csv
+            stage8s3_spectrum_feasibility.csv
+            stage8s3_spectrum_gate.txt
+
+  production:
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {beam: Q120, geom: F40_15x4_SSD40, baseline: '4x15', rotated: '15x4', ssd: '40', fx: '15', fy: '4', medium: water, seed1: '1111', seed2: '2111'}
+          - {beam: Q120, geom: F40_15x4_SSD40, baseline: '4x15', rotated: '15x4', ssd: '40', fx: '15', fy: '4', medium: rw3,   seed1: '1112', seed2: '2112'}
+          - {beam: Q120, geom: F40_8x6_SSD40,  baseline: '6x8',  rotated: '8x6',  ssd: '40', fx: '8',  fy: '6', medium: water, seed1: '1121', seed2: '2121'}
+          - {beam: Q120, geom: F40_8x6_SSD40,  baseline: '6x8',  rotated: '8x6',  ssd: '40', fx: '8',  fy: '6', medium: rw3,   seed1: '1122', seed2: '2122'}
+          - {beam: Q140, geom: F40_15x4_SSD40, baseline: '4x15', rotated: '15x4', ssd: '40', fx: '15', fy: '4', medium: water, seed1: '1211', seed2: '2211'}
+          - {beam: Q140, geom: F40_15x4_SSD40, baseline: '4x15', rotated: '15x4', ssd: '40', fx: '15', fy: '4', medium: rw3,   seed1: '1212', seed2: '2212'}
+          - {beam: Q140, geom: F40_8x6_SSD40,  baseline: '6x8',  rotated: '8x6',  ssd: '40', fx: '8',  fy: '6', medium: water, seed1: '1221', seed2: '2221'}
+          - {beam: Q140, geom: F40_8x6_SSD40,  baseline: '6x8',  rotated: '8x6',  ssd: '40', fx: '8',  fy: '6', medium: rw3,   seed1: '1222', seed2: '2222'}
+          - {beam: Q150, geom: F40_15x4_SSD40, baseline: '4x15', rotated: '15x4', ssd: '40', fx: '15', fy: '4', medium: water, seed1: '1311', seed2: '2311'}
+          - {beam: Q150, geom: F40_15x4_SSD40, baseline: '4x15', rotated: '15x4', ssd: '40', fx: '15', fy: '4', medium: rw3,   seed1: '1312', seed2: '2312'}
+          - {beam: Q150, geom: F40_8x6_SSD40,  baseline: '6x8',  rotated: '8x6',  ssd: '40', fx: '8',  fy: '6', medium: water, seed1: '1321', seed2: '2321'}
+          - {beam: Q150, geom: F40_8x6_SSD40,  baseline: '6x8',  rotated: '8x6',  ssd: '40', fx: '8',  fy: '6', medium: rw3,   seed1: '1322', seed2: '2322'}
+          - {beam: Q200, geom: F40_15x4_SSD40, baseline: '4x15', rotated: '15x4', ssd: '40', fx: '15', fy: '4', medium: water, seed1: '1411', seed2: '2411'}
+          - {beam: Q200, geom: F40_15x4_SSD40, baseline: '4x15', rotated: '15x4', ssd: '40', fx: '15', fy: '4', medium: rw3,   seed1: '1412', seed2: '2412'}
+          - {beam: Q200, geom: F40_8x6_SSD40,  baseline: '6x8',  rotated: '8x6',  ssd: '40', fx: '8',  fy: '6', medium: water, seed1: '1421', seed2: '2421'}
+          - {beam: Q200, geom: F40_8x6_SSD40,  baseline: '6x8',  rotated: '8x6',  ssd: '40', fx: '8',  fy: '6', medium: rw3,   seed1: '1422', seed2: '2422'}
+    env:
+      BEAM: ${{ matrix.beam }}
+      GEOM_ID: ${{ matrix.geom }}
+      BASELINE_FIELD: ${{ matrix.baseline }}
+      ROTATED_FIELD: ${{ matrix.rotated }}
+      SSD: ${{ matrix.ssd }}
+      FIELD_X: ${{ matrix.fx }}
+      FIELD_Y: ${{ matrix.fy }}
+      MEDIUM: ${{ matrix.medium }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+      SPECTRUM_VARIANT: hw_be0p8_a20
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      EGSRUN: /tmp/EGSnrc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage9b-hardware-spectra
+          path: stage9b_spectra
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Stage 9B rotated-field 300M point
+        run: bash scripts/run_stage9b_orientation_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage9b-${{ matrix.beam }}-${{ matrix.geom }}-${{ matrix.medium }}
+          path: stage9b_point_${{ matrix.geom }}_${{ matrix.beam }}_${{ matrix.medium }}.csv
+
+  evaluate:
+    needs: production
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage9b-Q*
+          path: stage9b_points
+          merge-multiple: true
+      - name: Evaluate 90-degree rectangular-field orientation sensitivity
+        run: |
+          python scripts/evaluate_stage9b_orientation.py \
+            --points-glob 'stage9b_points/stage9b_point_*.csv' \
+            --baseline results/stage8s3d_all_geometries_hardware_nominal_summary.csv \
+            --output stage9b_f40_orientation_sensitivity_summary.csv \
+            --gate-output stage9b_gate.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage9b-f40-orientation-sensitivity-summary
+          path: |
+            stage9b_f40_orientation_sensitivity_summary.csv
+            stage9b_gate.txt
