@@ -1,0 +1,9 @@
+gate_pass=true
+clinical_K_rows=12/12
+new_f40_transport_points=16/16
+reused_f50_rows=4/4
+max_u_R_direct_pct=0.446753
+max_abs_delta_vs_idealized_stage8_pct=1.224607
+source_model=finite_7p5mm
+spectrum_variant=hw_be0p8_a20
+note=F50 is reused from Stage 8S3b; Stage 8S3d computes only the eight missing F40 K values
