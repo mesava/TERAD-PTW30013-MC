@@ -2,10 +2,41 @@
 
 Monte Carlo проект для определения поправочных коэффициентов для ионизационной камеры **PTW 30013 SN 013488** при клинической дозиметрии киловольтного рентгенотерапевтического аппарата **TERAD 200**.
 
-> **Текущий статус:** Model B1 benchmark — PASS; Co-60 anchor — PASS; TERAD matched-water — 12/12 PASS; direct RW3→water baseline — 12/12 PASS; Stage 8S1/8S1b TiO₂ sensitivity — завершены; **Stage 8S2 water↔RW3 spectral scoring — окончательно PASS после targeted refinement, 24/24 и max p95 = 4.96714%**; Stage 8S3a hardware feasibility — PASS; Stage 8S3b hardware-informed F50 — 16/16 + PASS; **Stage 8S3c Be/kVp/anode-angle hardware-spectrum sensitivity — 48/48 transport points, 24/24 K, PASS**; **Stage 8S3d nominal hardware-informed all clinical geometries — 12/12 K, PASS**; **Stage 9B rectangular-field orientation sensitivity — 16/16 + PASS**; **Stage 9C1 PTW30013 tip-family benchmark qualification — ACTIVE, run `35383340655`**.
+> **Текущий статус:** **основная MC-задача выполнена** — benchmark PTW30013 Model B1 PASS, Co-60 anchor PASS, idealized water/RW3 baseline PASS, hardware-informed source model квалифицирована, **12/12 nominal clinical K_Q,g,Co^(RW3→w) получены**, Stage 9B orientation sensitivity завершён. **Stage 9C1** оставлен как последний дополнительный chamber-model robustness-check и сейчас ACTIVE, run `35383340655`: preflight/spectra PASS, 8 benchmark transport points в работе/очереди, failures = 0.
 >
-> **Ключевая интерпретация:** Stage 5/8 остаются контролируемым idealized/HVL-constrained baseline. Stage 8S3 показал, что explicit Be и finite focal spot способны менять `K` на величину порядка 1–2%. Номинальная hardware-informed source model для дальнейшей работы зафиксирована как **explicit Be 0.8 мм + screening `th=20°` + nonnegative residual-Al HVL fit + finite circular source Ø7.5 мм**. Stage 8S3c не выявил hardware-spectrum perturbation >1.23% в исследованном model/operational space и не требует полного high-statistics rerun. До завершения RW3/geometry/orientation/chamber/applicator sensitivities nominal `K` ещё не объявляются окончательной clinical truth.
+> **Ключевое решение проекта:** текущие 12 коэффициентов уже являются результатом основной MC-части. После завершения Stage 9C1 **не запускаются автоматически Stage 9C2/9C3**. Stage 9A также **не запускается без реальных измеренных/паспортных допусков** по глубине, толщине RW3 и contact/air gap. Основной путь закрытия проекта теперь: **подтвердить фактическую ориентацию камеры и F40 полей → экспериментально проверить nominal MC transfer в RW3 → построить итоговый uncertainty budget → выпустить финальную клиническую таблицу K, u_c, U(k=2) и правила применения**.
 
+## Карта проекта: какой вопрос решает каждый Stage
+
+Эта таблица задаёт смысл этапов проекта. Она отделяет **этапы, необходимые для получения коэффициентов**, от **robustness/uncertainty studies**, которые не должны бесконечно продлевать MC-часть после решения основной задачи.
+
+| Stage | Какой вопрос решает? | Что получено / решение | Роль |
+|---|---|---|---|
+| **0** | Работает ли воспроизводимая EGSnrc/egs++ инфраструктура на фиксированной версии кода? | Pinned EGSnrc, CI, reproducible transport/settings | обязательная основа |
+| **1** | Можно ли построить спектры TERAD, согласованные с известными kV, фильтрацией и измеренными HVL, не меняя экспериментальные HVL? | Idealized/HVL-constrained spectra | обязательная основа |
+| **2–3 / 3H** | Достаточно ли публично реконструированной PTW30013 для расчёта response ratios, или chamber model не воспроизводит независимые benchmark data? | Model B1 прошёл CCRI100/135/180 относительно CCRI250; после validation geometry заморожена | обязательная валидация камеры |
+| **4** | Как связать TERAD расчёты с сертификатной Co-60 калибровкой N_D,w(Co)? | Получен R_Co = (D_w/D_cav)_Co | обязательный calibration anchor |
+| **5** | Как ведёт себя валидированная камера в воде для 4 качеств × 3 клинических геометрий TERAD? | 12/12 matched-water baseline | обязательный контрольный baseline |
+| **8** | Каков прямой transfer от показания камеры в RW3 к дозе в воде при той же клинической Q/g? | Первые 12/12 direct K_Q,g,Co^(RW3→w) в idealized source model | центральная задача |
+| **8S1 / 8S1b** | Насколько K чувствителен к заявленному диапазону состава RW3 (TiO₂)? | Получен bounded composition-sensitivity envelope | uncertainty/robustness |
+| **8S2 / 8S2b / 8S2c** | Почему water↔RW3 correction не является простым attenuation factor; меняется ли спектр в среде? | Spectral water↔RW3 scoring PASS; физическое объяснение transfer | интерпретация, не новый множитель |
+| **8S3a** | Совместимы ли известные hardware-данные TERAD (Be window, focal spot и т.д.) с measured HVL без нефизической отрицательной фильтрации? | Hardware-informed spectrum chain feasible | обязательная квалификация source model |
+| **8S3b** | Меняют ли explicit Be и finite Ø7.5 mm focal spot коэффициент по сравнению с idealized point source? | Показан эффект порядка до ~1–1.6%; выбран finite-source nominal model | обязательное уточнение source model |
+| **8S3c** | Насколько nominal K устойчив к неопределённости Be, kVp и model-form anode angle при сохранении правил HVL? | Hardware-spectrum shifts ≤ ~1.23% в исследованном пространстве | robustness; полный high-stat rerun не нужен |
+| **8S3d** | Каковы рабочие hardware-informed коэффициенты для **всех** клинических Q/applicator geometries? | **12/12 nominal hardware-informed K — основная MC-цель выполнена** | итог основной MC-задачи |
+| **9B** | Имеет ли значение поворот прямоугольного поля относительно продольной оси Farmer-камеры? | Orientation sensitivity до **1.5535%**; требуется знать фактическую клиническую ориентацию | практически важный geometry check |
+| **9C1** | Может ли ранее объявленная разумная вариация chamber-tip geometry оставаться совместимой с независимыми CCRI benchmarks? | Последний дополнительный high-stat screen tip 1.0/2.0 mm; run 35383340655 | дополнительный robustness-check |
+| **9C2–9C3** | Если альтернативная chamber geometry прошла 9C1, воспроизводится ли результат независимо и меняет ли она TERAD K? | **Не выполняются автоматически.** Только при отдельном решении после 9C1 | optional research extension |
+| **9A** | Как реальный positioning/setup tolerance (depth, RW3 stack, air gap) преобразуется в uncertainty K? | Считать только при наличии **реальных** допусков/измерений; произвольные ±1/±2 mm не вводить | optional, нужен для полного setup uncertainty |
+| **Experimental validation** | Согласуется ли nominal MC transfer с доступным физическим измерением PTW30013 в RW3? | Следующий основной практический этап | обязательный closeout |
+| **Final uncertainty** | Как объединить MC statistics, calibration, operational uncertainty, RW3/model sensitivities и unresolved limitations? | Получить u_c и U(k=2) без двойного учёта | обязательный closeout |
+| **Final clinical table** | Какой коэффициент использовать для конкретных Q/applicator/orientation и с какой uncertainty? | Финальные K, u_c, U(k=2), область применимости и инструкция | конечный продукт |
+
+### Что уже считается завершённым
+
+Основная вычислительная цель проекта **уже достигнута** после Stage 8S3d: для Q120/Q140/Q150/Q200 и F40 4×15, F40 6×8, F50 8×10 получены 12 hardware-informed direct coefficients. Stage 9B добавил практически важную проверку ориентации прямоугольного поля, но не отменяет nominal table.
+
+Дальнейшая работа не должна превращаться в бесконечное усложнение Monte Carlo модели. Неизвестные proprietary детали камеры, tube head и applicator body **не реконструируются догадками**. Дополнительный MC запускается только если он отвечает на конкретный вопрос, для которого есть физически защищаемые bounds и который способен изменить клиническое решение или uncertainty budget.
 ## 1. Практическая задача
 
 Камера имеет сертификатный коэффициент калибровки в Co-60:
@@ -391,11 +422,7 @@ Gate:
 
 Ниже приведены текущие рабочие коэффициенты
 
-$
-K_{Q,g,Co}^{RW3\to w}
-=
-\frac{D_{w,Q,g}^{water}/D_{cav,Q,g}^{RW3}}{R_{Co}}
-$
+`K_Q,g,Co^(RW3→w) = [D_w,Q,g^water / D_cav,Q,g^RW3] / R_Co`
 
 для PTW30013 SN013488, physical depth 2.0 см, contact applicator geometry и nominal hardware-informed source model:
 
@@ -412,9 +439,7 @@ $
 
 Для применения:
 
-$
-D_w=M_{corr}\,N_{D,w}(Co-60)\,K_{Q,g,Co}^{RW3\to w}.
-$
+`D_w = M_corr · N_D,w(Co-60) · K_Q,g,Co^(RW3→w)`
 
 ### 12.6. Соглашение по ориентации прямоугольного поля
 
@@ -481,23 +506,27 @@ Nominal B1 tip = **1.5 мм** уже прошёл endpoint и intermediate-quali
 - CCRI100/250, CCRI135/250 и CCRI180/250 находятся в `|z| ≤ 2` относительно опубликованных targets;
 - выполняется `k100 < k135 < k180 < 1`.
 
-Одна 300M replica является screening qualification. Любой прошедший endpoint должен получить независимую replication до использования в TERAD model-form uncertainty.
+Одна 300M replica является screening qualification. По принятому решению проекта Stage 9C1 **доводится до конца как самостоятельный robustness-check**, но даже если endpoint пройдёт screening, Stage 9C2 replication и Stage 9C3 TERAD sensitivity **не запускаются автоматически**. Они остаются отдельным исследовательским расширением и требуют явного решения, что дополнительная chamber-model uncertainty действительно нужна.
 
-Active run: **`35383340655`**.
+Active run: **`35383340655`**. На момент последнего обновления preflight и spectra завершены успешно; 4/8 production points выполняются, 4/8 в очереди, failures = 0.
 
 ## 13. Road map
 
-1. ✅ **Stage 8S3d — nominal hardware-informed 12/12 K:** завершён; текущая рабочая nominal-таблица зафиксирована в `results/stage8s3d_all_geometries_hardware_nominal_summary.csv`.
-2. ✅ **Stage 9B — rectangular-field orientation sensitivity:** завершён; max `|ΔK| = 1.5535%`.
-3. 🟡 **Stage 9C1 — chamber model-form benchmark qualification:** ACTIVE, run `35383340655`; high-stat screen predeclared B1 tip endpoints 1.0 и 2.0 мм на CCRI100/135/180/250.
-4. ⏳ **Stage 9C2 — independent replication:** выполнить только для endpoint(s), прошедших Stage 9C1 provisional benchmark screen.
-5. ⏳ **Stage 9C3 — TERAD chamber model-form sensitivity:** считать только для independently benchmark-compatible альтернатив; nominal B1 geometry не подгонять.
-6. ⏳ **Stage 9A — RW3/depth geometry sensitivity:** physical chamber-centre depth, accumulated top-stack thickness и clinically plausible contact/air-gap perturbations. Численные bounds задавать только из реальных измерений/допусков, не придумывать.
-7. ⏳ **Applicator/head model limitation:** proprietary body scatter не выдумывать; моделировать отдельно только при появлении документированных материалов/размеров.
-8. ⏳ **Experimental validation PTW30013 in RW3:** проверить nominal MC transfer в доступной клинической геометрии.
-9. ⏳ **Final uncertainty budget:** отдельно MC statistics, operational standard uncertainties, bounded/model-form sensitivity envelopes и unresolved limitations.
-10. ⏳ **Final clinical table:** после validation/uncertainty closeout утвердить `K`, `u_c`, `U(k=2)`, область применимости и правила выбора коэффициента по Q/applicator/orientation.
+### Основной путь завершения проекта
 
+1. ✅ **Nominal MC coefficients:** Stage 8S3d завершён — 12/12 hardware-informed K_Q,g,Co^(RW3→w) получены.
+2. ✅ **Orientation check:** Stage 9B завершён — показана sensitivity до 1.5535%.
+3. 🟡 **Закончить уже запущенный Stage 9C1:** только как последний chamber-model robustness screen. **После него не переходить автоматически к 9C2/9C3.**
+4. ⏳ **Подтвердить реальную клиническую ориентацию** PTW30013 относительно F40 4×15 и 6×8 и выбрать соответствующую трактовку nominal/orientation result.
+5. ⏳ **Experimental validation in RW3:** выполнить физически доступную проверку nominal MC transfer.
+6. ⏳ **Final uncertainty budget:** объединить только обоснованные компоненты и явно отделить standard uncertainty от bounded/model-form envelopes и unresolved limitations.
+7. ⏳ **Final clinical table / protocol:** утвердить K, u_c, U(k=2), область применимости и правила выбора коэффициента.
+
+### Этапы, которые больше не являются автоматическим продолжением
+
+- **Stage 9A — RW3/depth/contact-gap sensitivity:** выполнять только если появятся реальные измеренные или паспортные допуски. Его вопрос — не «что будет при случайных ±1 мм», а **как известная реальная погрешность установки влияет на K и какой вклад она даёт в uncertainty**.
+- **Stage 9C2/9C3 — deeper chamber model-form study:** выполнять только если после 9C1 будет отдельная научная необходимость количественно оценивать альтернативную benchmark-compatible chamber geometry. Для получения текущих 12 коэффициентов эти stages **не нужны**.
+- **Detailed applicator/head MC:** не выполнять без документированных материалов/размеров. Неизвестную proprietary geometry не заменять догадками.
 ## 14. Текущий статус
 
 | Этап | Содержание | Статус |
@@ -519,9 +548,10 @@ Active run: **`35383340655`**.
 | 8S3d | nominal hardware-informed coefficients, all clinical geometries | ✅ 16/16 new F40 transport; 12/12 K; PASS |
 | 9B | F40 rectangular-field orientation 4×15↔15×4, 6×8↔8×6 | ✅ 16/16 transport; 8/8 comparisons; PASS |
 | 9C1 | PTW30013 B1 tip-family benchmark qualification | 🟡 ACTIVE — run `35383340655` |
-| 9C2–3 | replicate passing chamber variants → TERAD sensitivity | ⏳ conditional on 9C1 |
-| 9A | RW3 depth / stack / contact-gap sensitivity | ⏳ awaiting defensible physical bounds |
-| 10 | experimental validation + final uncertainty | ⏳ |
+| 9C2–3 | replicate passing chamber variants → TERAD sensitivity | ⏸ optional; no automatic launch after 9C1 |
+| 9A | RW3 depth / stack / contact-gap sensitivity | ⏸ optional; only with defensible physical bounds |
+| 10A | confirm real field/chamber orientation + experimental RW3 validation | ⏳ next core step |
+| 10B | final uncertainty budget + clinical table | ⏳ final closeout |
 
 ## 15. Зафиксированные правила проекта
 
@@ -544,6 +574,9 @@ Active run: **`35383340655`**.
 - Stage 8S3 = **hardware-informed source-model qualification**; Stage 8S3d задаёт текущую nominal 12/12 table, но она остаётся subject to geometry/orientation/model/validation closeout;
 - первая размерность прямоугольного поля в MC относится к X и, следовательно, к продольной оси PTW30013; Stage 9B показал orientation sensitivity до 1.5535%, но без подтверждения реальной ориентации аппликатора это не отдельная clinical correction;
 - chamber model-form alternatives допускаются к TERAD sensitivity только после независимой benchmark qualification; заведомо benchmark-incompatible geometry не используется для формирования uncertainty envelope;
+- Stage 9C1 завершается как последний заранее начатый chamber robustness-check, но Stage 9C2/9C3 не являются обязательным продолжением основной задачи;
+- Stage 9A не запускается с произвольными perturbations: нужны реальные допуски/измерения depth, RW3 stack и contact/air gap;
+- после получения 12 nominal K приоритет смещается с дальнейшего усложнения MC на experimental validation и defensible uncertainty budget;
 - nominal MC statistics не равны полной clinical uncertainty;
 - endpoint spans не превращаются автоматически в standard uncertainty без обоснованной probability model;
 - technical CI failure не трактуется как physical MC failure.
