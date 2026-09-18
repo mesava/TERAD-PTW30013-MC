@@ -1,0 +1,170 @@
+name: Stage 8S3d hardware-informed all clinical geometries
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage8s3d-hardware-all-geometries.yml'
+      - 'scripts/run_stage8s3d_point.sh'
+      - 'scripts/summarize_stage8s3d_point.py'
+      - 'scripts/evaluate_stage8s3d_all_geometries.py'
+      - 'scripts/build_stage8s3_input.py'
+      - 'scripts/generate_stage8s3_hardware_spectra.py'
+      - 'scripts/evaluate_stage8s3_hardware_spectra.py'
+      - 'scripts/build_stage5_terad_water_b1.py'
+      - 'scripts/build_stage8_terad_rw3_b1.py'
+      - 'data/beam_qualities.csv'
+      - 'results/stage4_co60_summary.csv'
+      - 'results/stage8_rw3_direct_summary.csv'
+      - 'results/stage8s3b_f50_hardware_source_summary.csv'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Stage 8S3d code
+        run: |
+          python -m py_compile scripts/build_stage8s3_input.py
+          python -m py_compile scripts/summarize_stage8s3d_point.py
+          python -m py_compile scripts/evaluate_stage8s3d_all_geometries.py
+          python -m py_compile scripts/generate_stage8s3_hardware_spectra.py
+          python -m py_compile scripts/evaluate_stage8s3_hardware_spectra.py
+      - name: Verify both F40 surface apertures with finite source
+        run: |
+          python scripts/build_stage8s3_input.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/f40_4x15.egsinp --medium water --source-model finite_7p5mm \
+            --beam Q120 --ssd 40 --field-x 4 --field-y 15 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 9011 --seed2 9911
+          python scripts/build_stage8s3_input.py \
+            --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+            --output /tmp/f40_6x8.egsinp --medium rw3 --source-model finite_7p5mm \
+            --beam Q120 --ssd 40 --field-x 6 --field-y 8 \
+            --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 9012 --seed2 9912
+          grep -Fq 'radius = 0.375000' /tmp/f40_4x15.egsinp
+          grep -Fq 'rectangle = -2.00000000 -7.50000000 2.00000000 7.50000000' /tmp/f40_4x15.egsinp
+          grep -Fq 'translation = 0 0 -2.000000' /tmp/f40_4x15.egsinp
+          grep -Fq 'radius = 0.375000' /tmp/f40_6x8.egsinp
+          grep -Fq 'rectangle = -3.00000000 -4.00000000 3.00000000 4.00000000' /tmp/f40_6x8.egsinp
+          grep -Fq 'translation = 0 0 -2.000000' /tmp/f40_6x8.egsinp
+
+  spectra:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'spekpy==2.5.4' numpy scipy
+      - name: Regenerate nominal hardware-informed spectra
+        run: |
+          python scripts/generate_stage8s3_hardware_spectra.py
+          python scripts/evaluate_stage8s3_hardware_spectra.py \
+            --summary stage8s3_spectrum_feasibility.csv \
+            --output stage8s3_spectrum_gate.txt
+          python - <<'PY'
+          import csv
+          rows=list(csv.DictReader(open('stage8s3_spectrum_feasibility.csv')))
+          cand=[r for r in rows if r['variant']=='hw_be0p8_a20']
+          assert len(cand)==4
+          assert all(r['feasible_nonnegative_residual_al']=='1' for r in cand)
+          PY
+          for b in Q120 Q140 Q150 Q200; do
+            test -s "stage8s3_spectra/hw_be0p8_a20/${b}.ensrc"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3d-hardware-spectra
+          path: |
+            stage8s3_spectra/hw_be0p8_a20/*.ensrc
+            stage8s3_spectra/hw_be0p8_a20/*.csv
+            stage8s3_spectrum_feasibility.csv
+            stage8s3_spectrum_gate.txt
+
+  production:
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {beam: Q120, geom: F40_4x15_SSD40, applicator: F40, ssd: '40', fx: '4', fy: '15', medium: water, seed1: '9111', seed2: '9911'}
+          - {beam: Q120, geom: F40_4x15_SSD40, applicator: F40, ssd: '40', fx: '4', fy: '15', medium: rw3,   seed1: '9112', seed2: '9912'}
+          - {beam: Q120, geom: F40_6x8_SSD40,  applicator: F40, ssd: '40', fx: '6', fy: '8',  medium: water, seed1: '9121', seed2: '9921'}
+          - {beam: Q120, geom: F40_6x8_SSD40,  applicator: F40, ssd: '40', fx: '6', fy: '8',  medium: rw3,   seed1: '9122', seed2: '9922'}
+          - {beam: Q140, geom: F40_4x15_SSD40, applicator: F40, ssd: '40', fx: '4', fy: '15', medium: water, seed1: '9211', seed2: '9811'}
+          - {beam: Q140, geom: F40_4x15_SSD40, applicator: F40, ssd: '40', fx: '4', fy: '15', medium: rw3,   seed1: '9212', seed2: '9812'}
+          - {beam: Q140, geom: F40_6x8_SSD40,  applicator: F40, ssd: '40', fx: '6', fy: '8',  medium: water, seed1: '9221', seed2: '9821'}
+          - {beam: Q140, geom: F40_6x8_SSD40,  applicator: F40, ssd: '40', fx: '6', fy: '8',  medium: rw3,   seed1: '9222', seed2: '9822'}
+          - {beam: Q150, geom: F40_4x15_SSD40, applicator: F40, ssd: '40', fx: '4', fy: '15', medium: water, seed1: '9311', seed2: '9711'}
+          - {beam: Q150, geom: F40_4x15_SSD40, applicator: F40, ssd: '40', fx: '4', fy: '15', medium: rw3,   seed1: '9312', seed2: '9712'}
+          - {beam: Q150, geom: F40_6x8_SSD40,  applicator: F40, ssd: '40', fx: '6', fy: '8',  medium: water, seed1: '9321', seed2: '9721'}
+          - {beam: Q150, geom: F40_6x8_SSD40,  applicator: F40, ssd: '40', fx: '6', fy: '8',  medium: rw3,   seed1: '9322', seed2: '9722'}
+          - {beam: Q200, geom: F40_4x15_SSD40, applicator: F40, ssd: '40', fx: '4', fy: '15', medium: water, seed1: '9411', seed2: '9611'}
+          - {beam: Q200, geom: F40_4x15_SSD40, applicator: F40, ssd: '40', fx: '4', fy: '15', medium: rw3,   seed1: '9412', seed2: '9612'}
+          - {beam: Q200, geom: F40_6x8_SSD40,  applicator: F40, ssd: '40', fx: '6', fy: '8',  medium: water, seed1: '9421', seed2: '9621'}
+          - {beam: Q200, geom: F40_6x8_SSD40,  applicator: F40, ssd: '40', fx: '6', fy: '8',  medium: rw3,   seed1: '9422', seed2: '9622'}
+    env:
+      BEAM: ${{ matrix.beam }}
+      GEOM_ID: ${{ matrix.geom }}
+      APPLICATOR: ${{ matrix.applicator }}
+      SSD: ${{ matrix.ssd }}
+      FIELD_X: ${{ matrix.fx }}
+      FIELD_Y: ${{ matrix.fy }}
+      MEDIUM: ${{ matrix.medium }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+      SPECTRUM_VARIANT: hw_be0p8_a20
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      EGSRUN: /tmp/EGSnrc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage8s3d-hardware-spectra
+          path: stage8s3d_spectra
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Stage 8S3d 300M F40 point
+        run: bash scripts/run_stage8s3d_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3d-${{ matrix.beam }}-${{ matrix.geom }}-${{ matrix.medium }}
+          path: stage8s3d_point_${{ matrix.geom }}_${{ matrix.beam }}_${{ matrix.medium }}.csv
+
+  evaluate:
+    needs: production
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage8s3d-Q*
+          path: stage8s3d_points
+          merge-multiple: true
+      - name: Build complete 12-geometry nominal hardware-informed K table
+        run: |
+          python scripts/evaluate_stage8s3d_all_geometries.py \
+            --points-glob 'stage8s3d_points/stage8s3d_point_*.csv' \
+            --rco results/stage4_co60_summary.csv \
+            --idealized-baseline results/stage8_rw3_direct_summary.csv \
+            --f50-hardware results/stage8s3b_f50_hardware_source_summary.csv \
+            --output stage8s3d_all_geometries_hardware_nominal_summary.csv \
+            --gate-output stage8s3d_gate.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage8s3d-all-geometries-hardware-nominal-summary
+          path: |
+            stage8s3d_all_geometries_hardware_nominal_summary.csv
+            stage8s3d_gate.txt
