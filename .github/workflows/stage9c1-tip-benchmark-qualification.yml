@@ -1,0 +1,140 @@
+name: Stage 9C1 PTW30013 tip-family benchmark qualification
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/stage9c1-tip-benchmark-qualification.yml'
+      - 'scripts/build_stage9c_tip_benchmark.py'
+      - 'scripts/run_stage9c_tip_benchmark_point.sh'
+      - 'scripts/summarize_stage9c_tip_benchmark_point.py'
+      - 'scripts/evaluate_stage9c_tip_benchmark.py'
+      - 'scripts/generate_czarnecki_stage3f_spectra.py'
+      - 'scripts/stage3h0_spectrum_fidelity.py'
+      - 'inputs/stage3b_czarnecki_modelA_vrt.template.egsinp'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Stage 9C1 code
+        run: |
+          python -m py_compile scripts/build_stage9c_tip_benchmark.py
+          python -m py_compile scripts/summarize_stage9c_tip_benchmark_point.py
+          python -m py_compile scripts/evaluate_stage9c_tip_benchmark.py
+      - name: Verify both predeclared tip endpoints
+        run: |
+          for case in "tip1p0 0.10" "tip2p0 0.20"; do
+            set -- $case
+            python scripts/build_stage9c_tip_benchmark.py \
+              --template inputs/stage3b_czarnecki_modelA_vrt.template.egsinp \
+              --output "/tmp/$1.egsinp" --beam CCRI100 --tip-cm "$2" \
+              --ncase 1000 --nbatch 2 --xcse 64 --rr 64 --seed1 101 --seed2 201
+            grep -Fq 'set label = chamber_cavity 10 16 20' "/tmp/$1.egsinp"
+            grep -Fq 'z-planes = -50 -2 18' "/tmp/$1.egsinp"
+            grep -Fq 'cavity mass = 7.832972283369083e-04' "/tmp/$1.egsinp"
+          done
+
+  spectra:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate and validate Czarnecki benchmark spectra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'spekpy==2.5.4' 'scipy>=1.10' 'numpy>=1.26'
+          python scripts/generate_czarnecki_stage3f_spectra.py
+          python scripts/stage3h0_spectrum_fidelity.py
+          python - <<'PY'
+          import csv
+          rows=list(csv.DictReader(open('results/stage3h0_spectrum_fidelity.csv')))
+          for beam in ('CCRI100','CCRI135','CCRI180','CCRI250'):
+              r=next(x for x in rows if x['beam_id']==beam and x['mode']=='spekcalc')
+              assert abs(float(r['kerma_mean_error_percent'])) < 0.5
+              assert abs(float(r['hvl_error_percent'])) < 2.0
+          PY
+          for b in CCRI100 CCRI135 CCRI180 CCRI250; do
+            test -s "spectra/benchmark_czarnecki2020_stage3f/spekcalc/${b}.ensrc"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage9c1-benchmark-spectra
+          path: |
+            spectra/benchmark_czarnecki2020_stage3f/spekcalc/*.ensrc
+            results/stage3h0_spectrum_fidelity.csv
+
+  production:
+    needs: spectra
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {case: tip1p0, tip_cm: '0.10', tip_mm: '1.0', beam: CCRI100, seed1: '1511', seed2: '2511'}
+          - {case: tip1p0, tip_cm: '0.10', tip_mm: '1.0', beam: CCRI135, seed1: '1512', seed2: '2512'}
+          - {case: tip1p0, tip_cm: '0.10', tip_mm: '1.0', beam: CCRI180, seed1: '1513', seed2: '2513'}
+          - {case: tip1p0, tip_cm: '0.10', tip_mm: '1.0', beam: CCRI250, seed1: '1514', seed2: '2514'}
+          - {case: tip2p0, tip_cm: '0.20', tip_mm: '2.0', beam: CCRI100, seed1: '1611', seed2: '2611'}
+          - {case: tip2p0, tip_cm: '0.20', tip_mm: '2.0', beam: CCRI135, seed1: '1612', seed2: '2612'}
+          - {case: tip2p0, tip_cm: '0.20', tip_mm: '2.0', beam: CCRI180, seed1: '1613', seed2: '2613'}
+          - {case: tip2p0, tip_cm: '0.20', tip_mm: '2.0', beam: CCRI250, seed1: '1614', seed2: '2614'}
+    env:
+      CASE: ${{ matrix.case }}
+      TIP_CM: ${{ matrix.tip_cm }}
+      TIP_MM: ${{ matrix.tip_mm }}
+      BEAM: ${{ matrix.beam }}
+      SEED1: ${{ matrix.seed1 }}
+      SEED2: ${{ matrix.seed2 }}
+      NCASE: '300000000'
+      NBATCH: '30'
+      XCSE: '64'
+      RR: '64'
+      EGSRUN: /tmp/EGSnrc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage9c1-benchmark-spectra
+          path: stage9c_benchmark_spectra
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run 300M benchmark point
+        run: bash scripts/run_stage9c_tip_benchmark_point.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage9c1-${{ matrix.case }}-${{ matrix.beam }}
+          path: stage9c_point_${{ matrix.case }}_${{ matrix.beam }}.csv
+
+  evaluate:
+    needs: production
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage9c1-tip*
+          path: stage9c_points
+          merge-multiple: true
+      - name: Classify benchmark-compatible model-form candidates
+        run: |
+          python scripts/evaluate_stage9c_tip_benchmark.py \
+            --points-glob 'stage9c_points/stage9c_point_*.csv' \
+            --output stage9c1_tip_benchmark_summary.csv \
+            --gate-output stage9c1_gate.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage9c1-tip-benchmark-qualification-summary
+          path: |
+            stage9c1_tip_benchmark_summary.csv
+            stage9c1_gate.txt
