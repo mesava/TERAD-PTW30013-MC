@@ -2,7 +2,7 @@
 
 Monte Carlo проект для определения поправочных коэффициентов для ионизационной камеры **PTW 30013 SN 013488** при клинической дозиметрии киловольтного рентгенотерапевтического аппарата **TERAD 200**.
 
-> **Текущий статус:** Model B1 benchmark — PASS; Co-60 anchor — PASS; TERAD matched-water — 12/12 PASS; direct RW3→water baseline — 12/12 PASS; Stage 8S1/8S1b TiO₂ sensitivity — завершены; **Stage 8S2 water↔RW3 spectral scoring — окончательно PASS после targeted refinement, 24/24 и max p95 = 4.96714%**; Stage 8S3a hardware feasibility — PASS; Stage 8S3b hardware-informed F50 — 16/16 + PASS; **Stage 8S3c Be/kVp/anode-angle hardware-spectrum sensitivity — 48/48 transport points, 24/24 K, PASS**; **Stage 8S3d nominal hardware-informed all clinical geometries — 12/12 K, PASS**; **Stage 9B rectangular-field orientation sensitivity — ACTIVE, run `35350432200`**.
+> **Текущий статус:** Model B1 benchmark — PASS; Co-60 anchor — PASS; TERAD matched-water — 12/12 PASS; direct RW3→water baseline — 12/12 PASS; Stage 8S1/8S1b TiO₂ sensitivity — завершены; **Stage 8S2 water↔RW3 spectral scoring — окончательно PASS после targeted refinement, 24/24 и max p95 = 4.96714%**; Stage 8S3a hardware feasibility — PASS; Stage 8S3b hardware-informed F50 — 16/16 + PASS; **Stage 8S3c Be/kVp/anode-angle hardware-spectrum sensitivity — 48/48 transport points, 24/24 K, PASS**; **Stage 8S3d nominal hardware-informed all clinical geometries — 12/12 K, PASS**; **Stage 9B rectangular-field orientation sensitivity — 16/16 + PASS**; **Stage 9C1 PTW30013 tip-family benchmark qualification — ACTIVE, run `35383340655`**.
 >
 > **Ключевая интерпретация:** Stage 5/8 остаются контролируемым idealized/HVL-constrained baseline. Stage 8S3 показал, что explicit Be и finite focal spot способны менять `K` на величину порядка 1–2%. Номинальная hardware-informed source model для дальнейшей работы зафиксирована как **explicit Be 0.8 мм + screening `th=20°` + nonnegative residual-Al HVL fit + finite circular source Ø7.5 мм**. Stage 8S3c не выявил hardware-spectrum perturbation >1.23% в исследованном model/operational space и не требует полного high-statistics rerun. До завершения RW3/geometry/orientation/chamber/applicator sensitivities nominal `K` ещё не объявляются окончательной clinical truth.
 
@@ -434,16 +434,69 @@ Stage 9B выполняет чистый поворот прямоугольно
 
 Это позволяет отдельно оценить чувствительность `K` к ориентации поля относительно неосесимметричной продольной геометрии камеры. Текущий baseline convention пока не объявляется фактической ориентацией клинического аппликатора без отдельного подтверждения реальной установки.
 
+### 12.7. Stage 9B — rectangular-field orientation sensitivity: PASS
+
+Run **`35350432200`**.
+
+Stage 9B выполнил чистый поворот двух F40 прямоугольных полей на 90° относительно продольной оси PTW30013 при неизменных spectrum, source size, SSD, physical depth и RW3:
+
+- 4×15 → 15×4;
+- 6×8 → 8×6.
+
+Production: **16/16 новых transport points PASS**; evaluator: **8/8 orientation comparisons PASS**.
+
+| Q | 4×15 → 15×4 | 6×8 → 8×6 |
+|---|---:|---:|
+| Q120 | **−1.132%** | −0.542% |
+| Q140 | **−1.116%** | **+1.234%** |
+| Q150 | **−1.554%** | +0.064% |
+| Q200 | **−1.056%** | −0.278% |
+
+Gate:
+
+- max `u(R_direct,rotated) = 0.409883%`;
+- max `|ΔK_orientation| = 1.553525%`;
+- max `z_orientation = 2.670450`.
+
+Наиболее выраженный эффект: **Q150, 4×15→15×4: −1.554%**. Для сравнения rotated/nominal общий `R_Co` сокращается, поэтому это непосредственно sensitivity direct transfer к ориентации поля относительно камеры.
+
+Файлы:
+
+- `results/stage9b_f40_orientation_sensitivity_summary.csv`;
+- `results/stage9b_gate.txt`.
+
+Stage 9B показывает, что ориентацию прямоугольного поля нельзя автоматически считать нейтральной. Однако пока не подтверждена фактическая ориентация клинических F40 аппликаторов относительно оси/стема камеры, этот результат остаётся **model/geometry sensitivity**, а не автоматически дополнительной поправкой к nominal K.
+
+### 12.8. Stage 9C1 — benchmark qualification of chamber model-form endpoints
+
+Stage 9C не начинает с TERAD расчётов альтернативных камер. Сначала проверяется benchmark compatibility уже ранее объявленной Stage 3H3 B1 tip-family.
+
+Nominal B1 tip = **1.5 мм** уже прошёл endpoint и intermediate-quality validation. Новых размеров не вводится. Stage 9C1 пересчитывает только ранее объявленные sensitivity endpoints:
+
+- `tip1p0` = 1.0 мм;
+- `tip2p0` = 2.0 мм.
+
+Каждый endpoint получает CCRI100/135/180/250 по 300M histories. Variant считается только **provisional benchmark candidate**, если одновременно:
+
+- CCRI100/250, CCRI135/250 и CCRI180/250 находятся в `|z| ≤ 2` относительно опубликованных targets;
+- выполняется `k100 < k135 < k180 < 1`.
+
+Одна 300M replica является screening qualification. Любой прошедший endpoint должен получить независимую replication до использования в TERAD model-form uncertainty.
+
+Active run: **`35383340655`**.
+
 ## 13. Road map
 
 1. ✅ **Stage 8S3d — nominal hardware-informed 12/12 K:** завершён; текущая рабочая nominal-таблица зафиксирована в `results/stage8s3d_all_geometries_hardware_nominal_summary.csv`.
-2. 🟡 **Stage 9B — rectangular-field orientation sensitivity:** ACTIVE, run `35350432200`. Считаются только новые rotated geometries 15×4 и 8×6; nominal 4×15 и 6×8 переиспользуются из Stage 8S3d.
-3. ⏳ **Stage 9A — RW3/depth geometry sensitivity:** physical chamber-centre depth, accumulated top-stack thickness и clinically plausible contact/air-gap perturbations. Численные bounds задавать только из реальных измерений/допусков, не придумывать.
-4. ⏳ **Stage 9C — PTW30013 model-form sensitivity:** только в benchmark-compatible chamber-model space; geometry после benchmark не подгонять к TERAD.
-5. ⏳ **Applicator/head model limitation:** proprietary body scatter не выдумывать; моделировать отдельно только при появлении документированных материалов/размеров.
-6. ⏳ **Experimental validation PTW30013 in RW3:** проверить nominal MC transfer в доступной клинической геометрии.
-7. ⏳ **Final uncertainty budget:** отдельно MC statistics, operational standard uncertainties, bounded/model-form sensitivity envelopes и unresolved limitations.
-8. ⏳ **Final clinical table:** после validation/uncertainty closeout утвердить `K`, `u_c`, `U(k=2)`, область применимости и правила выбора коэффициента по Q/applicator/orientation.
+2. ✅ **Stage 9B — rectangular-field orientation sensitivity:** завершён; max `|ΔK| = 1.5535%`.
+3. 🟡 **Stage 9C1 — chamber model-form benchmark qualification:** ACTIVE, run `35383340655`; high-stat screen predeclared B1 tip endpoints 1.0 и 2.0 мм на CCRI100/135/180/250.
+4. ⏳ **Stage 9C2 — independent replication:** выполнить только для endpoint(s), прошедших Stage 9C1 provisional benchmark screen.
+5. ⏳ **Stage 9C3 — TERAD chamber model-form sensitivity:** считать только для independently benchmark-compatible альтернатив; nominal B1 geometry не подгонять.
+6. ⏳ **Stage 9A — RW3/depth geometry sensitivity:** physical chamber-centre depth, accumulated top-stack thickness и clinically plausible contact/air-gap perturbations. Численные bounds задавать только из реальных измерений/допусков, не придумывать.
+7. ⏳ **Applicator/head model limitation:** proprietary body scatter не выдумывать; моделировать отдельно только при появлении документированных материалов/размеров.
+8. ⏳ **Experimental validation PTW30013 in RW3:** проверить nominal MC transfer в доступной клинической геометрии.
+9. ⏳ **Final uncertainty budget:** отдельно MC statistics, operational standard uncertainties, bounded/model-form sensitivity envelopes и unresolved limitations.
+10. ⏳ **Final clinical table:** после validation/uncertainty closeout утвердить `K`, `u_c`, `U(k=2)`, область применимости и правила выбора коэффициента по Q/applicator/orientation.
 
 ## 14. Текущий статус
 
@@ -464,9 +517,10 @@ Stage 9B выполняет чистый поворот прямоугольно
 | 8S3b | hardware-informed F50 point↔Ø7.5 мм | ✅ 16/16 + PASS |
 | 8S3c | Be/kVp/anode-angle F50 finite-source sensitivity | ✅ 48/48 transport; 24/24 K; PASS |
 | 8S3d | nominal hardware-informed coefficients, all clinical geometries | ✅ 16/16 new F40 transport; 12/12 K; PASS |
-| 9B | F40 rectangular-field orientation 4×15↔15×4, 6×8↔8×6 | 🟡 ACTIVE — run `35350432200` |
+| 9B | F40 rectangular-field orientation 4×15↔15×4, 6×8↔8×6 | ✅ 16/16 transport; 8/8 comparisons; PASS |
+| 9C1 | PTW30013 B1 tip-family benchmark qualification | 🟡 ACTIVE — run `35383340655` |
+| 9C2–3 | replicate passing chamber variants → TERAD sensitivity | ⏳ conditional on 9C1 |
 | 9A | RW3 depth / stack / contact-gap sensitivity | ⏳ awaiting defensible physical bounds |
-| 9C | PTW30013 benchmark-compatible model-form sensitivity | ⏳ |
 | 10 | experimental validation + final uncertainty | ⏳ |
 
 ## 15. Зафиксированные правила проекта
@@ -488,7 +542,8 @@ Stage 9B выполняет чистый поворот прямоугольно
 - direct coefficient не умножается повторно на `k_Q`, `k_g` или `D_w/D_RW3`;
 - Stage 5/8 = **idealized baseline**;
 - Stage 8S3 = **hardware-informed source-model qualification**; Stage 8S3d задаёт текущую nominal 12/12 table, но она остаётся subject to geometry/orientation/model/validation closeout;
-- первая размерность прямоугольного поля в MC относится к X и, следовательно, к продольной оси PTW30013; поворот поля исследуется отдельно в Stage 9B;
+- первая размерность прямоугольного поля в MC относится к X и, следовательно, к продольной оси PTW30013; Stage 9B показал orientation sensitivity до 1.5535%, но без подтверждения реальной ориентации аппликатора это не отдельная clinical correction;
+- chamber model-form alternatives допускаются к TERAD sensitivity только после независимой benchmark qualification; заведомо benchmark-incompatible geometry не используется для формирования uncertainty envelope;
 - nominal MC statistics не равны полной clinical uncertainty;
 - endpoint spans не превращаются автоматически в standard uncertainty без обоснованной probability model;
 - technical CI failure не трактуется как physical MC failure.
