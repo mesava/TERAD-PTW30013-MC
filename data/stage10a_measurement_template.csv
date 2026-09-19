@@ -1,0 +1,3 @@
+date,operator,beam_quality,applicator,nominal_field,medium,physical_orientation_code,setup_id,reading_id,raw_reading_C,temperature_C,pressure_hPa,k_TP,k_s,k_pol,k_elec,M_corr_C,notes
+,,,,water,,,,,,,,,,,,,
+,,,,rw3,,,,,,,,,,,,,
