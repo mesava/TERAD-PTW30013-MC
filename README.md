@@ -2,9 +2,9 @@
 
 Monte Carlo проект для определения поправочных коэффициентов для ионизационной камеры **PTW 30013 SN 013488** при клинической дозиметрии киловольтного рентгенотерапевтического аппарата **TERAD 200**.
 
-> **Текущий статус:** **MC-часть основной задачи завершена**. PTW30013 Model B1 benchmark PASS, Co-60 anchor PASS, 12/12 nominal hardware-informed `K_Q,g,Co^(RW3→w)` получены, Stage 9B orientation sensitivity завершён. Последний дополнительный robustness-check **Stage 9C1** также завершён: 8/8 transport points PASS; tip 1.0 мм benchmark-incompatible, tip 2.0 мм — только provisional candidate. По принятому решению **9C2/9C3 не запускаются**. Текущий core-stage — **Stage 10A: подтверждение реальной ориентации + экспериментальная water↔RW3 validation**.
+> **Текущий статус:** **MC-часть основной задачи завершена**. PTW30013 Model B1 benchmark PASS, Co-60 anchor PASS, 12/12 nominal hardware-informed `K_Q,g,Co^(RW3→w)` получены, Stage 9B orientation sensitivity завершён. Последний дополнительный robustness-check **Stage 9C1** также завершён: 8/8 transport points PASS; tip 1.0 мм benchmark-incompatible, tip 2.0 мм — только provisional candidate. По принятому решению **9C2/9C3 не запускаются**. Текущий core-stage — **Stage 10A: experimental water↔RW3 validation**. Клиническая ориентация уже подтверждена и совпадает с baseline Stage 8S3d: 4/6/8 см идут вдоль продольной оси PTW30013, 15/8/10 см — поперёк.
 >
-> **Ключевое решение проекта:** текущие 12 коэффициентов уже являются результатом основной MC-части. После завершения Stage 9C1 **не запускаются автоматически Stage 9C2/9C3**. Stage 9A также **не запускается без реальных измеренных/паспортных допусков** по глубине, толщине RW3 и contact/air gap. Основной путь закрытия проекта теперь: **подтвердить фактическую ориентацию камеры и F40 полей → экспериментально проверить nominal MC transfer в RW3 → построить итоговый uncertainty budget → выпустить финальную клиническую таблицу K, u_c, U(k=2) и правила применения**.
+> **Ключевое решение проекта:** текущие 12 коэффициентов уже являются результатом основной MC-части. После завершения Stage 9C1 **не запускаются автоматически Stage 9C2/9C3**. Stage 9A также **не запускается без реальных измеренных/паспортных допусков** по глубине, толщине RW3 и contact/air gap. Основной путь закрытия проекта теперь: **экспериментально проверить nominal MC water↔RW3 transfer → построить итоговый uncertainty budget → выпустить финальную клиническую таблицу K, u_c, U(k=2) и правила применения**.
 
 ## Карта проекта: какой вопрос решает каждый Stage
 
@@ -24,11 +24,11 @@ Monte Carlo проект для определения поправочных к
 | **8S3b** | Меняют ли explicit Be и finite Ø7.5 mm focal spot коэффициент по сравнению с idealized point source? | Показан эффект порядка до ~1–1.6%; выбран finite-source nominal model | обязательное уточнение source model |
 | **8S3c** | Насколько nominal K устойчив к неопределённости Be, kVp и model-form anode angle при сохранении правил HVL? | Hardware-spectrum shifts ≤ ~1.23% в исследованном пространстве | robustness; полный high-stat rerun не нужен |
 | **8S3d** | Каковы рабочие hardware-informed коэффициенты для **всех** клинических Q/applicator geometries? | **12/12 nominal hardware-informed K — основная MC-цель выполнена** | итог основной MC-задачи |
-| **9B** | Имеет ли значение поворот прямоугольного поля относительно продольной оси Farmer-камеры? | Orientation sensitivity до **1.5535%**; требуется знать фактическую клиническую ориентацию | практически важный geometry check |
+| **9B** | Имеет ли значение поворот прямоугольного поля относительно продольной оси Farmer-камеры? | Orientation sensitivity до **1.5535%**; реальная ориентация позже подтверждена как baseline Stage 8S3d | geometry sensitivity — закрыт |
 | **9C1** | Может ли ранее объявленная разумная вариация chamber-tip geometry оставаться совместимой с независимыми CCRI benchmarks? | 8/8 PASS; tip 1.0 мм отклонён, tip 2.0 мм provisional candidate; дальнейшая ветка остановлена | дополнительный robustness-check — завершён |
 | **9C2–9C3** | Если альтернативная chamber geometry прошла 9C1, воспроизводится ли результат независимо и меняет ли она TERAD K? | **Не выполняются автоматически.** Только при отдельном решении после 9C1 | optional research extension |
 | **9A** | Как реальный positioning/setup tolerance (depth, RW3 stack, air gap) преобразуется в uncertainty K? | Считать только при наличии **реальных** допусков/измерений; произвольные ±1/±2 mm не вводить | optional, нужен для полного setup uncertainty |
-| **10A — orientation + experimental validation** | Какая MC-ориентация соответствует реальной установке и согласуется ли относительный chamber response water/RW3 с MC? | Протокол и шаблоны подготовлены; следующий практический этап | обязательный closeout |
+| **10A — experimental validation** | Согласуется ли относительный chamber response water/RW3 с MC в уже подтверждённой baseline orientation? | Ориентация закрыта; protocol + MC targets подготовлены; измерения — текущий этап | обязательный closeout |
 | **Final uncertainty** | Как объединить MC statistics, calibration, operational uncertainty, RW3/model sensitivities и unresolved limitations? | Получить u_c и U(k=2) без двойного учёта | обязательный closeout |
 | **Final clinical table** | Какой коэффициент использовать для конкретных Q/applicator/orientation и с какой uncertainty? | Финальные K, u_c, U(k=2), область применимости и инструкция | конечный продукт |
 
@@ -491,7 +491,7 @@ Gate:
 - `results/stage9b_f40_orientation_sensitivity_summary.csv`;
 - `results/stage9b_gate.txt`.
 
-Stage 9B показывает, что ориентацию прямоугольного поля нельзя автоматически считать нейтральной. Однако пока не подтверждена фактическая ориентация клинических F40 аппликаторов относительно оси/стема камеры, этот результат остаётся **model/geometry sensitivity**, а не автоматически дополнительной поправкой к nominal K.
+Stage 9B показывает, что гипотетический поворот поля на 90° не всегда нейтрален. **Клиническая ориентация теперь подтверждена как baseline convention Stage 8S3d:** 4×15 = 4 см вдоль оси камеры и 15 см поперёк; 6×8 = 6 вдоль и 8 поперёк; F50 8×10 = 8 вдоль и 10 поперёк. Поэтому clinical K берутся непосредственно из nominal Stage 8S3d table; rotated Stage 9B values остаются sensitivity results и не применяются как correction.
 
 ### 12.8. Stage 9C1 — benchmark qualification of chamber model-form endpoints: COMPLETE
 
@@ -524,8 +524,8 @@ Production: **8/8 transport points PASS**.
 
 Stage 10A не создаёт новых MC коэффициентов. Он отвечает на два практических вопроса:
 
-1. **Какая ориентация прямоугольного поля относительно продольной оси PTW30013 реализована в реальной установке?**
-2. **Согласуется ли измеренное отношение response той же камеры в воде и RW3 с существующим MC prediction?**
+1. **Какая ориентация прямоугольного поля относительно продольной оси PTW30013 реализована в реальной установке? — CLOSED: baseline Stage 8S3d.**
+2. **Согласуется ли измеренное отношение response той же камеры в воде и RW3 с существующим MC prediction? — CURRENT EXPERIMENT.**
 
 Экспериментальный observable:
 
@@ -551,6 +551,12 @@ MC counterpart:
 
 Все 12 Q/geometry validation ratios можно получить через **6 физических setup'ов**: 3 клинические геометрии × water/RW3, измеряя в каждом setup все четыре Q.
 
+Готовые MC targets для сравнения сохранены в:
+
+- `results/stage10a_mc_validation_targets.csv`
+
+Диапазон nominal `V_MC = D_cav,water/D_cav,RW3` для 12 точек: **0.9559–1.0002**, с MC relative uncertainty примерно **0.49–0.62%**.
+
 ## 13. Road map
 
 ### Основной путь завершения проекта
@@ -558,8 +564,7 @@ MC counterpart:
 1. ✅ **Nominal MC coefficients:** 12/12 hardware-informed `K_Q,g,Co^(RW3→w)` получены.
 2. ✅ **Orientation MC sensitivity:** Stage 9B завершён; max `|ΔK| = 1.5535%`.
 3. ✅ **Final chamber robustness screen:** Stage 9C1 завершён; дальнейший chamber-model MC остановлен.
-4. 🟡 **Stage 10A — real orientation + experimental validation:** текущий основной этап.
-   - документировать реальную ориентацию F40 4×15, F40 6×8 и F50 8×10 относительно оси/стема PTW30013;
+4. 🟡 **Stage 10A — experimental validation:** текущий основной этап. Ориентация уже подтверждена как baseline Stage 8S3d.
    - выполнить water/RW3 relative-response measurements;
    - сравнить `V_exp` с существующим `V_MC` без новых transport calculations;
    - получить реальный setup/repositioning contribution.
@@ -595,7 +600,7 @@ MC counterpart:
 | 9C1 | PTW30013 B1 tip-family benchmark qualification | ✅ 8/8 transport; tip1.0 rejected; tip2.0 provisional candidate |
 | 9C2–3 | replicate passing chamber variants → TERAD sensitivity | ⏹ stopped by project decision |
 | 9A | RW3 depth / stack / contact-gap sensitivity | ⏸ only if Stage 10A supplies real bounds |
-| 10A | confirm real field/chamber orientation + experimental RW3 validation | 🟡 CURRENT CORE STAGE |
+| 10A | baseline orientation confirmed; experimental water↔RW3 validation | 🟡 CURRENT CORE STAGE — orientation ✅, measurements pending |
 | 10B | final uncertainty budget + clinical table | ⏳ final closeout |
 
 ## 15. Зафиксированные правила проекта
@@ -617,7 +622,7 @@ MC counterpart:
 - direct coefficient не умножается повторно на `k_Q`, `k_g` или `D_w/D_RW3`;
 - Stage 5/8 = **idealized baseline**;
 - Stage 8S3 = **hardware-informed source-model qualification**; Stage 8S3d задаёт текущую nominal 12/12 table, но она остаётся subject to geometry/orientation/model/validation closeout;
-- первая размерность прямоугольного поля в MC относится к X и, следовательно, к продольной оси PTW30013; Stage 9B показал orientation sensitivity до 1.5535%, но без подтверждения реальной ориентации аппликатора это не отдельная clinical correction;
+- первая размерность прямоугольного поля в MC относится к X и к продольной оси PTW30013; клиническая ориентация подтверждена как baseline: 4×15 → 4 вдоль/15 поперёк, 6×8 → 6 вдоль/8 поперёк, 8×10 → 8 вдоль/10 поперёк; Stage 9B rotated results не являются clinical correction;
 - chamber model-form alternatives допускаются к TERAD sensitivity только после независимой benchmark qualification; заведомо benchmark-incompatible geometry не используется для формирования uncertainty envelope;
 - Stage 9C1 завершается как последний заранее начатый chamber robustness-check, но Stage 9C2/9C3 не являются обязательным продолжением основной задачи;
 - Stage 9A не запускается с произвольными perturbations: нужны реальные допуски/измерения depth, RW3 stack и contact/air gap;
