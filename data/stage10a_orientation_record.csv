@@ -1,4 +1,4 @@
 applicator,nominal_field,ssd_cm,chamber_axis_direction,stem_direction,field_side_parallel_to_chamber_axis_cm,field_side_transverse_to_chamber_axis_cm,mc_mapping,photo_or_sketch_reference,confirmed_by,date,notes
-F40,4x15,40,,,,,,,,
-F40,6x8,40,,,,,,,,
-F50,8x10,50,,,,,,,,
+F40,4x15,40,longitudinal PTW30013 axis; first field dimension,project geometry: stem right,4,15,Stage8S3d baseline 4x15,,clinical convention confirmed by user,2026-09-19,Stage9B 15x4 retained only as 90-degree sensitivity result
+F40,6x8,40,longitudinal PTW30013 axis; first field dimension,project geometry: stem right,6,8,Stage8S3d baseline 6x8,,clinical convention confirmed by user,2026-09-19,Stage9B 8x6 retained only as 90-degree sensitivity result
+F50,8x10,50,longitudinal PTW30013 axis; first field dimension,project geometry: stem right,8,10,Stage8S3d/Stage8S3b baseline 8x10,,clinical convention confirmed by user,2026-09-19,No additional F50 orientation calculation required under confirmed convention
