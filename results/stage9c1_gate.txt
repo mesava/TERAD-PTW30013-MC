@@ -1,0 +1,6 @@
+transport_gate_pass=true
+new_transport_points=8/8
+tip1p0_provisional_benchmark_candidate=false
+tip2p0_provisional_benchmark_candidate=true
+qualification_rule=all CCRI100/135/180 ratios within |z|<=2 and monotonic k100<k135<k180<1
+note=single 300M replicate is a screen only; any passing endpoint requires independent replication before TERAD model-form use
