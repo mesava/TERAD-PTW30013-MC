@@ -298,6 +298,85 @@ Model B1 — публичная surrogate-модель, а не proprietary blue
 
 Benchmark CCRI100/135/180 относительно CCRI250 — PASS. После benchmark геометрия камеры не подгоняется к TERAD.
 
+### 5.1. Соответствие Model B1 публичным спецификациям PTW 30013
+
+Model B1 **согласована с заявленными производителем публичными геометрическими и материальными характеристиками PTW 30013 в той степени, в которой эти данные опубликованы**. При этом модель остаётся public-data surrogate и не заявляется как точная proprietary CAD/blueprint-копия камеры.
+
+| Параметр | PTW public specification | Model B1 | Оценка |
+|---|---:|---:|---|
+| Nominal sensitive volume | 0.6 cm³ | геометрический net air cavity ≈ 0.650 cm³ | ⚠ nominal volume не трактуется как буквальный цилиндрический gas volume |
+| Sensitive radius | 3.05 mm | 3.05 mm | ✅ exact |
+| Sensitive length | 23.0 mm | 23.0 mm | ✅ exact |
+| PMMA wall thickness | 0.335 mm | 0.335 mm | ✅ exact |
+| PMMA density | 1.19 g/cm³ | 1.19 g/cm³ | ✅ exact |
+| Graphite thickness | 0.09 mm | 0.09 mm | ✅ exact |
+| Graphite density | 1.85 g/cm³ | 1.85 g/cm³ | ✅ exact |
+| Total wall area density | 56.5 mg/cm² | 56.515 mg/cm² | ✅ practically exact |
+| Central electrode | Al 99.98%, Ø1.15 mm | elemental Al, Ø1.15 mm | ✅ dosimetrically equivalent approximation |
+| Reference point | chamber axis, 13 mm from chamber tip | 13.0 mm from modeled external tip | ✅ exact positional constraint |
+| Direction of incidence | radial | beam perpendicular to chamber longitudinal axis | ✅ matched |
+| Waterproof use | water / solid-state phantom | direct water/RW3 placement | ✅ matched use case |
+| Build-up cap | PMMA, 4.55 mm | not included in clinical TERAD model | ⚠ separate accessory, not part of current setup |
+| Guard / insulator / stem internals | not dimensioned in public catalog | not explicitly reconstructed | ⚠ proprietary/unpublished limitation |
+
+#### Wall construction cross-check
+
+Model B1 uses the catalog wall layers literally:
+
+- graphite: 0.09 mm at 1.85 g/cm³;
+- PMMA: 0.335 mm at 1.19 g/cm³.
+
+The corresponding total wall area density is
+
+`0.009 cm · 1.85 g/cm³ + 0.0335 cm · 1.19 g/cm³ = 0.056515 g/cm²`
+
+or
+
+`56.515 mg/cm²`,
+
+which agrees with the PTW catalog value **56.5 mg/cm²** to rounding precision. This is an independent internal consistency check that the wall implementation in Model B1 reproduces the manufacturer-stated construction.
+
+#### Reference-point cross-check
+
+PTW specifies the chamber reference point on the chamber axis **13 mm from the chamber tip**.
+
+For the 23.0 mm sensitive length, the half-length is 11.5 mm. Model B1 uses a 1.5 mm PMMA tip surrogate, therefore:
+
+`11.5 mm + 1.5 mm = 13.0 mm`.
+
+Thus the modeled external tip-to-reference-point distance exactly reproduces the catalog constraint. The **1.5 mm internal tip layer is nevertheless treated as a surrogate geometry**, because the public catalog does not define the real internal nose/guard/insulator shape.
+
+#### Why 0.6 cm³ is not forced geometrically
+
+A literal cylinder with catalog radius 3.05 mm and length 23.0 mm has gross volume ≈ 0.672 cm³. After subtracting the modeled central-electrode volume, the net geometric air cavity is ≈ 0.650 cm³, not exactly 0.600 cm³.
+
+This does not by itself contradict the catalog because **0.6 cm³ is a nominal sensitive volume**, whereas the real electrically active volume depends on guard/dead-volume/end geometry that is not publicly specified. Forcing the MC model to exactly 0.600 cm³ by changing the published radius or length would violate better-constrained manufacturer dimensions.
+
+Accordingly, Model B1 prioritizes:
+
+1. exact public radius/length/wall/electrode diameter;
+2. exact reference-point placement;
+3. manufacturer-consistent materials/densities;
+4. independent benchmark agreement;
+
+instead of artificially forcing the nominal 0.6 cm³ value.
+
+#### Model limitations retained explicitly
+
+Model B1 does **not** claim exact knowledge of:
+
+- detailed tip/nose shape;
+- guard-ring geometry;
+- insulator dimensions/materials;
+- electrode base;
+- exact central-electrode length as a manufacturer dimension;
+- stem/cable internal construction;
+- serial-specific manufacturing tolerances.
+
+These details are not invented. Their possible dosimetric impact was bounded indirectly through the independent CCRI benchmark programme and later chamber-model sensitivity checks.
+
+**Project conclusion:** Model B1 is therefore considered **manufacturer-consistent at the public-specification level and independently benchmark-validated**, but not a proprietary full-geometry replica of PTW30013.
+
 ## 6. Stage 5 — matched-water baseline: 12/12 PASS
 
 Run `34931189724`. Для всех 12 конфигураций: 300M histories / 30 batches, Model B1, physical chamber-centre depth 2.0 см, клинические SSD 40/50 см.
