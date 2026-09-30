@@ -869,7 +869,7 @@ MC counterpart:
 
 Copyright holder / author attribution:
 
-`Copyright (c) 2026 mesava`
+`Copyright (c) 2026 Aleksandr Valerievich Melentev (mesava)`
 
 MIT разрешает свободно:
 
